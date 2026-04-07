@@ -1,0 +1,1746 @@
+#!/usr/bin/env python3
+"""
+Command-line interface for carb_param_automated_martini3
+"""
+
+import argparse
+import subprocess
+import sys
+import os
+from pathlib import Path
+
+def get_package_dir():
+    """Get the package installation directory"""
+    return Path(__file__).parent
+
+def get_script_path(script_name):
+    """Get the full path to a script"""
+    package_dir = get_package_dir()
+    script_path = package_dir / "scripts" / script_name
+    return str(script_path)
+
+def auto_detect_martini3_mapping():
+    """Auto-detect the Martini3 mapping file in the package"""
+    package_dir = get_package_dir()
+    
+    # Search paths relative to package
+    search_paths = [
+        package_dir / "data" / "definitions_atoms_ff_martini3.json",
+        package_dir.parent / "data" / "definitions_atoms_ff_martini3.json",
+        Path.cwd() / "data" / "definitions_atoms_ff_martini3.json",
+        Path.cwd().parent / "data" / "definitions_atoms_ff_martini3.json",
+    ]
+    
+    for path in search_paths:
+        if path.exists():
+            return str(path)
+    
+    # Try to find using importlib.resources (for installed packages)
+    try:
+        import importlib.resources
+        from carb_param_automated_martini3 import data
+        mapping_file = importlib.resources.files(data) / "definitions_atoms_ff_martini3.json"
+        if mapping_file.exists():
+            return str(mapping_file)
+    except (ImportError, AttributeError):
+        pass
+    
+    return None
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Automated CG topology generation for (bio)molecules using Martini 3",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+
+  # Run automatically all pipeline (auto-detects Martini3 mapping file)
+  
+  cg-martini3 --input_gro                                carb.gro \\
+              --input_beads_definitions                  beads_config.json \\
+              --beads_position                           com \\
+              --aa_itp                                   carb.itp \\
+              --output_dir                               OUTPUTS 
+              
+  # Or provide mapping file manually
+  cg-martini3 --input_gro                                carb.gro \\
+              --input_beads_definitions                  beads_config.json \\
+              --definition_martini3_bead_type_to_itp     martini3_map.json \\
+              --beads_position                           com \\
+              --aa_itp                                   carb.itp \\
+              --output_dir                               OUTPUTS
+              
+  Output structure:
+    OUTPUTS/
+    ├── JSON/
+    │   └── beads_definition_com.json
+    ├── GRO/
+    │   ├── carb.gro (all-atom model)
+    │   └── cg.gro (coarse-grained model)
+    ├── NDX/
+    │   ├── cg.ndx (GROMACS index file)
+    │   ├── cg.map (Mapping file)
+    │   ├── bonds.ndx
+    │   ├── angles.ndx
+    │   └── dihedrals.ndx
+    └── ITP/
+        └── carb_cg.itp
+        └── final_cg.itp (final topology)
+  
+  # If you want to use individual modules, the examples follow:
+  
+  Consider the example files for you train the usage:
+  
+  1- Convert all-atom GRO file to JSON bead definition
+  gro-to-json --input_gro carb.gro --output_json beads_config.json --config_json beads_definition_com.json --position_beads com (or geom)
+  
+  2- Convert JSON bead definition back to CG GRO file
+  json-to-gro --json_beads_definition beads_definition_com.json --input_gro carb.gro --output_beads_gro cg.gro --coordinate_option com (or geom)
+  
+  3- Generate NDX and MAP files for GROMACS
+  generate-index --json_beads_definition beads_definition_com.json --input_gro carb.gro --output_ndx cg.ndx --output_map cg.map
+  
+  4- Build coarse-grained topology file
+  generate-itp --cg_gro cg.gro --cg_ndx cg.ndx --aa_itp carb.itp --def_json definitions_atoms_ff_martini3.json --output carb_cg.itp (if default Martini, use the flag --default)
+  
+  5- Detect internal and external bonds
+  generate-bonds --cg_gro cg.gro --output_ndx bonds.ndx --max_distance 5.0 --tolerance 0.5 (effective max = 5.5 Å)
+  
+  6- Calculate angles from existing bonds (from bonds.ndx)
+  generate-angles --gro cg_beads.gro --bonds bonds.ndx --output angles.ndx
+  
+  7- Calculate dihedrals from existing bonds (from bonds.ndx)
+  generate-dihedrals -g cg_beads.gro -b bonds.ndx -o dihedrals.ndx
+  
+  8- Calculate topology of the (bio)molecule (from cg.gro, carb_cg.itp, bonds.ndx, angles.ndx, dihedrals.ndx)
+  generate_final --input_bonds bonds.ndx --input_angles angles.ndx 
+                 --input_dihedrals dihedrals.ndx --itp_incomplete carb_cg.itp 
+                 --cg_gro cg.gro --itp_complete carb_final.itp 
+                 --exclusion all ('all', 'none', or list like '1-5,7-9,20-26' (default: 'all'))
+                 --force_application fix=[1250;25] ('fix=[bond_k;angle_k]' or 'random=[mean_bond,sd_bond;mean_angle,sd_angle]')
+  
+        """
+    )
+    
+    parser.add_argument('--input_gro', required=True, help='Input GRO file')
+    parser.add_argument('--input_beads_definitions', required=True, help='Beads configuration JSON')
+    parser.add_argument('--definition_martini3_bead_type_to_itp', required=False, 
+                       help='Martini3 bead type mapping JSON (optional, auto-detected if not provided)')
+    parser.add_argument('--output_dir', required=True, help='Output directory')
+    parser.add_argument('--beads_position', required=True, choices=['com', 'geom'],
+                       help='Position calculation method')
+    parser.add_argument('--aa_itp', required=True, help='All-atom ITP file')
+    parser.add_argument('--max_distance', default='5.0', type=float,
+                       help='Maximum distance for bond detection (default: 5.0)')
+    parser.add_argument('--tolerance', default='0.5', type=float,
+                       help='Tolerance for bond detection (default: 0.5)')
+    parser.add_argument('--python_dir', help='Python scripts directory (optional, uses package scripts)')
+    parser.add_argument('--exclusion', default='all', 
+                       help='Exclusions: all, none, or list like 1-5,7-9,20-26 (default: all)')
+    parser.add_argument('--force_application', default='fix=[1250;25]',
+                       help='Force constants: fix=[bond_k;angle_k] or random=[mean_bond,sd_bond;mean_angle,sd_angle] (default: fix=[1250;25])')
+    
+    args = parser.parse_args()
+    
+    # Auto-detect Martini3 mapping file if not provided
+    if not args.definition_martini3_bead_type_to_itp:
+        print("INFO: --definition_martini3_bead_type_to_itp not provided. Auto-detecting...")
+        mapping_file = auto_detect_martini3_mapping()
+        
+        if mapping_file:
+            print(f"✓ Auto-detected Martini3 mapping file: {mapping_file}")
+            args.definition_martini3_bead_type_to_itp = mapping_file
+        else:
+            print("ERROR: Could not auto-detect definitions_atoms_ff_martini3.json")
+            print("Please ensure the file exists in the data/ directory of the package")
+            print("or provide it manually with --definition_martini3_bead_type_to_itp")
+            sys.exit(1)
+    
+    # Check if mapping file exists
+    if not os.path.exists(args.definition_martini3_bead_type_to_itp):
+        print(f"ERROR: Martini3 mapping file not found: {args.definition_martini3_bead_type_to_itp}")
+        sys.exit(1)
+    
+    # Determine script directory
+    if args.python_dir:
+        script_dir = args.python_dir
+    else:
+        script_dir = str(get_package_dir() / "scripts")
+    
+    # Check if scripts exist
+    for script in ['1-gro_to_beads_json.py', '2-json_to_beads_gro.py', '3-index_map.py',
+                   '4-defining_atoms_type.py', '5-bonds_general.py', '6-angles.py', '7-dihedrals.py']:
+        if not os.path.exists(os.path.join(script_dir, script)):
+            print(f"ERROR: Script not found: {script}")
+            print(f"Looking in: {script_dir}")
+            sys.exit(1)
+    
+    # Check if bash script exists
+    bash_script = get_package_dir() / 'bin' / 'extract_cg_topology.sh'
+    if not bash_script.exists():
+        print(f"ERROR: Bash script not found: {bash_script}")
+        sys.exit(1)
+    
+    # Build command for the main pipeline
+    cmd = [
+        'bash', str(bash_script),
+        '--input_gro', args.input_gro,
+        '--input_beads_definitions', args.input_beads_definitions,
+        '--definition_martini3_bead_type_to_itp', args.definition_martini3_bead_type_to_itp,
+        '--output_dir', args.output_dir,
+        '--beads_position', args.beads_position,
+        '--python_dir', script_dir,
+        '--aa_itp', args.aa_itp,
+        '--max_distance', str(args.max_distance),
+        '--tolerance', str(args.tolerance),
+        '--exclusion', args.exclusion,
+        '--force_application', args.force_application
+    ]
+    
+    print(f"\nRunning pipeline with:")
+    print(f"  Input GRO: {args.input_gro}")
+    print(f"  Output dir: {args.output_dir}")
+    print(f"  Beads position: {args.beads_position}")
+    print(f"  Martini3 mapping: {args.definition_martini3_bead_type_to_itp}")
+    print("")
+    
+    # Execute the pipeline
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Pipeline failed with error: {e}")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("\nPipeline interrupted by user")
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()
+"""
+carb_param_automated_martini3 - Automated CG topology generation for glycans
+
+This package provides tools for generating coarse-grained topologies
+for glycans using the Martini 3 force field.
+"""
+
+__version__ = "1.0.0"
+__author__ = "Anacleto Silva de Souza"
+
+# Import main CLI function for easy access
+from .cli import main
+
+# Do NOT import scripts here to avoid circular imports
+# Scripts should be imported directly when needed via:
+# from carb_param_automated_martini3.scripts import script_name
+
+__all__ = ['main']
+#!/bin/bash
+
+set -e
+set -u
+set -o pipefail
+
+# ----------------------------------------
+# Configurações principais
+# ----------------------------------------
+rm -rf automatization_of_potentials
+
+ITER=20
+BASEDIR=/grain/anacleto/projects/project_1_virion_simulation/CG_simulations/glycoprotein/ASN_FA2/6_CG_MD_simulation
+WORKDIR=$BASEDIR/automatization_of_potentials
+
+NDX_BONDS=$BASEDIR/NDX/bonds.ndx
+NDX_ANGLES=$BASEDIR/NDX/angles.ndx
+NDX_DIHEDRALS=$BASEDIR/NDX/dihedrals.ndx
+
+SCRIPTS_PATH=$BASEDIR/scripts
+JSON_TOPOLOGY_MARTINI3=$BASEDIR/JSON/atoms.json
+MDP=$BASEDIR/mdp
+
+export OMP_NUM_THREADS=12
+export GMX_GPU_DD_COMMS=true
+export GMX_GPU_PME_PP_COMMS=true
+export GMX_FORCE_UPDATE_DEFAULT_GPU=true
+export GMX_ENABLE_DIRECT_GPU_COMM=TRUE
+export GMX_DISABLE_GPU_TIMING=TRUE
+
+mkdir -p $WORKDIR
+
+# ----------------------------------------
+# Criação do diretório inicial iter_0
+# ----------------------------------------
+if [ ! -d "$WORKDIR/iter_0" ]; then
+    mkdir -p $WORKDIR/iter_0
+
+    cp $BASEDIR/MDRUN/topol.top $WORKDIR/iter_0/
+    cp $BASEDIR/MDRUN/molecule.gro $WORKDIR/iter_0/
+    cp $BASEDIR/MDRUN/solv_ions_CG.gro $WORKDIR/iter_0/
+    cp $BASEDIR/MDRUN/ASN_FA2.ndx $WORKDIR/iter_0/
+    cp $BASEDIR/MDRUN/posre_ASN_FA2.itp $WORKDIR/iter_0/
+    cp $BASEDIR/MDRUN/*.ndx $WORKDIR/iter_0/ 2>/dev/null
+    cp $BASEDIR/MDRUN/*.tpr $WORKDIR/iter_0/ 2>/dev/null
+    cp $BASEDIR/MDRUN/FA2_final.itp $WORKDIR/iter_0/
+    cp -r $BASEDIR/ff_files $WORKDIR/iter_0/
+fi
+
+# ----------------------------------------
+# Loop principal
+# ----------------------------------------
+for ((i=0; i<$ITER; i++)); do
+    echo "========================================="
+    echo "Starting iteration $i"
+    echo "========================================="
+
+    CURRENT_ITER=iter_$i
+    NEXT_ITER=iter_$((i+1))
+    CURDIR=$WORKDIR/$CURRENT_ITER
+
+    cd $CURDIR
+    echo "PWD: $(pwd)"
+
+    mkdir -p stat figures
+
+    # -------------------------------
+    # MD Simulation
+    # -------------------------------
+    gmx grompp -f $MDP/minimization.mdp -p topol.top -c solv_ions_CG.gro -o em.tpr -r solv_ions_CG.gro -maxwarn 2
+    gmx mdrun -deffnm em -v -pin on -ntmpi 1 -ntomp 12
+
+    gmx grompp -f $MDP/CG_nvt_1000.mdp -p topol.top -c em.gro -o nvt.tpr -n index.ndx -r em.gro -maxwarn 2
+    gmx mdrun -deffnm nvt -ntmpi 1 -ntomp 12 -v
+
+    gmx grompp -f $MDP/CG_npt_1000.mdp -p topol.top -c nvt.gro -o npt.tpr -n index.ndx -r nvt.gro -t nvt.cpt -maxwarn 2
+    gmx mdrun -deffnm npt -ntmpi 1 -ntomp 12 -v
+
+    gmx grompp -f $MDP/CG_md.mdp -p topol.top -c npt.gro -o md.tpr -n index.ndx -r npt.gro -t npt.cpt -maxwarn 2
+    gmx mdrun -deffnm md -ntmpi 1 -ntomp 12 -v
+
+    # -------------------------------
+    # Processamento da trajetória
+    # -------------------------------
+    echo "0" | gmx trjconv -s solv_ions.tpr -f md.xtc -pbc whole -o md_whole.xtc
+    echo "1 0" | gmx trjconv -s solv_ions.tpr -f md_whole.xtc -o md_center_fit.xtc -fit rot+trans -n ASN_FA2.ndx
+
+    # -------------------------------
+    # Análise de distribuições
+    # -------------------------------
+    bash $SCRIPTS_PATH/CG_distr.sh \
+        $NDX_BONDS $NDX_ANGLES $NDX_DIHEDRALS \
+        md_center_fit.xtc solv_ions.tpr
+    
+    rm -fr *.xtc *.trr nvt* npt* md* *.cpt *.edr *.log \#* solv_ions.tpr topol.top ff_files em* *.xvg *.ndx solv_ions_CG.gro posre_ASN_FA2.itp molecule.gro ASN_FA2.tpr
+
+    echo "Checking distributions..."
+    ls -lah _bonds/ _angles/ _dihedrals/ || echo "WARNING: missing distribution dirs"
+
+    # -------------------------------
+    # Plot + statistiscs
+    # -------------------------------
+    python3 $SCRIPTS_PATH/plot_distributions.py \
+        --bonds_dir _bonds \
+        --angles_dir _angles \
+        --dihedrals_dir _dihedrals \
+        --figures_dir figures \
+        --bond_out stat/bond_${i}.tsv \
+        --angle_out stat/angle_${i}.tsv \
+        --dihedral_out stat/dihedral_${i}.tsv
+
+    echo "Checking TSV..."
+    ls -lah stat/
+
+    if [ ! -f stat/bond_${i}.tsv ]; then
+        echo "ERROR: bond_${i}.tsv missing"
+        exit 1
+    fi
+
+    # -------------------------------
+    # Update of the potentials if this is not ultimate
+    # -------------------------------
+    if [ $i -lt $((ITER-1)) ]; then
+        NEXTDIR=$WORKDIR/$NEXT_ITER
+        mkdir -p $NEXTDIR
+
+        python3 $SCRIPTS_PATH/generate_itp_update.py \
+            --bonds_ref $BASEDIR/AA_REF/bond_ref.tsv \
+            --angles_ref $BASEDIR/AA_REF/angle_ref.tsv \
+            --dihedrals_ref $BASEDIR/AA_REF/dihedral_ref.tsv \
+            --bonds_sim stat/bond_${i}.tsv \
+            --angles_sim stat/angle_${i}.tsv \
+            --dihedrals_sim stat/dihedral_${i}.tsv \
+            --atoms_json $JSON_TOPOLOGY_MARTINI3 \
+            --ndx_bounds $NDX_BONDS \
+            --ndx_angles $NDX_ANGLES \
+            --ndx_dihedrals $NDX_DIHEDRALS \
+            --molecule_name FA2 \
+            --dihedrals_target \
+            --itp_out $NEXTDIR/FA2_final.itp
+
+        # copy to next iteration
+        cp $BASEDIR/MDRUN/topol.top $NEXTDIR/
+        cp $BASEDIR/MDRUN/molecule.gro $NEXTDIR/
+        cp $BASEDIR/MDRUN/solv_ions_CG.gro $NEXTDIR/
+        cp $BASEDIR/MDRUN/*.ndx $NEXTDIR/ 2>/dev/null
+        cp $BASEDIR/MDRUN/posre_ASN_FA2.itp $NEXTDIR/
+        cp -r $BASEDIR/ff_files $NEXTDIR/
+        cp $BASEDIR/MDRUN/*.tpr $NEXTDIR/
+    fi
+
+done
+
+echo "========================================="
+echo "DONE"
+echo "Final result: $WORKDIR/iter_$((ITER-1))/carb_optimized.itp"
+#!/bin/bash
+
+# ============================
+# ARGUMENTS
+# ============================
+BONDS_NDX="$1"
+ANGLES_NDX="$2"
+DIHEDRALS_NDX="$3"
+XTC_FILE="$4"
+TPR_FILE="$5"
+OUT_PREFIX="$6"
+
+# ============================
+# Bonds and constraints
+# ============================
+DIR="${OUT_PREFIX}_bonds"
+rm -rf $DIR
+mkdir $DIR
+
+grep -E '^[[:space:]]*[0-9]+[[:space:]]+[0-9]+' $BONDS_NDX > bonds_list.txt
+NBONDS=$(wc -l < bonds_list.txt)
+echo "Found $NBONDS bonds"
+
+REPORT="$DIR/report_bonds.txt"
+rm -f $REPORT
+touch $REPORT
+
+IBOND=0
+while [ $IBOND -lt $NBONDS ]; do
+    bead_pair=$(sed -n "$((IBOND+1))p" bonds_list.txt)
+    echo "Processing bond $IBOND: $bead_pair"
+    
+    echo "[ bond_$IBOND ]" > temp_bond_$IBOND.ndx
+    echo $bead_pair >> temp_bond_$IBOND.ndx
+    
+    echo 0 | gmx distance -f $XTC_FILE \
+                          -n temp_bond_$IBOND.ndx \
+                          -s $TPR_FILE \
+                          -oall $DIR/bond_$IBOND.xvg \
+                          -xvg none &> $DIR/bond_$IBOND.log
+    
+    if [ $? -ne 0 ] || [ ! -f $DIR/bond_$IBOND.xvg ]; then
+        echo "ERROR on bond $IBOND" >> $DIR/errors.log
+        cat $DIR/bond_$IBOND.log >> $DIR/errors.log
+    else
+        echo "---- bond $IBOND (${bead_pair}) ----" >> $DIR/data_bonds.txt
+        awk '/Average distance/ {print $3} /Standard deviation/ {print $3}' $DIR/bond_$IBOND.log >> $DIR/data_bonds.txt
+        gmx analyze -f $DIR/bond_$IBOND.xvg -dist $DIR/distr_bond_$IBOND.xvg -xvg none -bw 0.001 
+
+        echo "$IBOND: $bead_pair" >> $REPORT
+    fi
+    
+    rm -f temp_bond_$IBOND.ndx
+    let IBOND=$IBOND+1
+done
+rm -f bonds_list.txt
+
+
+# ============================
+# Angles
+# ============================
+DIR="${OUT_PREFIX}_angles"
+rm -rf $DIR
+mkdir $DIR
+
+grep -E '^[[:space:]]*[0-9]+[[:space:]]+[0-9]+[[:space:]]+[0-9]+' $ANGLES_NDX > angles_list.txt
+NANGLES=$(wc -l < angles_list.txt)
+echo "Found $NANGLES angles"
+
+REPORT="$DIR/report_angles.txt"
+rm -f $REPORT
+touch $REPORT
+
+IANG=0
+while [ $IANG -lt $NANGLES ]; do
+    bead_trio=$(sed -n "$((IANG+1))p" angles_list.txt)
+    echo "Processing angle $IANG: $bead_trio"
+    
+    echo "[ angle_$IANG ]" > temp_angle_$IANG.ndx
+    echo $bead_trio >> temp_angle_$IANG.ndx
+    
+    echo 0 | gmx angle -f $XTC_FILE \
+                       -n temp_angle_$IANG.ndx \
+                       -ov $DIR/ang_$IANG.xvg &> $DIR/ang_$IANG.log
+    
+    if [ $? -ne 0 ] || [ ! -f $DIR/ang_$IANG.xvg ]; then
+        echo "ERROR on angle $IANG" >> $DIR/errors.log
+        cat $DIR/ang_$IANG.log >> $DIR/errors.log
+    else
+        echo "---- ang $IANG (${bead_trio}) ----" >> $DIR/data_angles.txt
+        awk '/< angle >/ {print $5} /Std. Dev./ {print $4}' $DIR/ang_$IANG.log >> $DIR/data_angles.txt
+        gmx analyze -f $DIR/ang_$IANG.xvg -dist $DIR/distr_ang_$IANG.xvg -xvg none -bw 1.0 
+
+        echo "$IANG: $bead_trio" >> $REPORT
+    fi
+    
+    rm -f temp_angle_$IANG.ndx
+    let IANG=$IANG+1
+done
+rm -f angles_list.txt
+
+
+# ============================
+# Dihedrals
+# ============================
+DIR="${OUT_PREFIX}_dihedrals"
+rm -rf $DIR
+mkdir $DIR
+
+grep -E '^[[:space:]]*[0-9]+[[:space:]]+[0-9]+[[:space:]]+[0-9]+[[:space:]]+[0-9]+' $DIHEDRALS_NDX > dihedrals_list.txt
+NDIHEDRALS=$(wc -l < dihedrals_list.txt)
+echo "Found $NDIHEDRALS dihedrals"
+
+REPORT="$DIR/report_dihedrals.txt"
+rm -f $REPORT
+touch $REPORT
+
+IDIH=0
+while [ $IDIH -lt $NDIHEDRALS ]; do
+    bead_quartet=$(sed -n "$((IDIH+1))p" dihedrals_list.txt)
+    echo "Processing dihedral $IDIH: $bead_quartet"
+    
+    valid=1
+    for num in $bead_quartet; do
+        if [ $num -lt 1 ] || [ $num -gt 30 ]; then
+            valid=0
+            echo "ERROR: bead $num out of range (1-30)" >> $DIR/errors.log
+        fi
+    done
+    
+    if [ $valid -eq 1 ]; then
+        echo "[ dihedral_$IDIH ]" > temp_dih_$IDIH.ndx
+        echo $bead_quartet >> temp_dih_$IDIH.ndx
+        
+        echo 0 | gmx angle -type dihedral \
+                           -f $XTC_FILE \
+                           -n temp_dih_$IDIH.ndx \
+                           -ov $DIR/dih_$IDIH.xvg &> $DIR/dih_$IDIH.log
+        
+        if [ $? -ne 0 ] || [ ! -f $DIR/dih_$IDIH.xvg ]; then
+            echo "ERROR on dihedral $IDIH" >> $DIR/errors.log
+            cat $DIR/dih_$IDIH.log >> $DIR/errors.log
+        else
+            echo "---- dih $IDIH (${bead_quartet}) ----" >> $DIR/data_dihedrals.txt
+            awk '/< angle >/ {print $5} /Std. Dev./ {print $4}' $DIR/dih_$IDIH.log >> $DIR/data_dihedrals.txt
+            gmx analyze -f $DIR/dih_$IDIH.xvg -dist $DIR/distr_dih_$IDIH.xvg -xvg none -bw 1.0 
+
+            echo "$IDIH: $bead_quartet" >> $REPORT
+        fi
+    fi
+    
+    rm -f temp_dih_$IDIH.ndx
+    let IDIH=$IDIH+1
+done
+rm -f dihedrals_list.txt
+
+echo "Processing completed!"
+echo "Results in: ${OUT_PREFIX}_bonds/, ${OUT_PREFIX}_angles/, ${OUT_PREFIX}_dihedrals/"
+echo "Check errors.log in each directory if needed."
+#!/usr/bin/env python3
+"""
+Script para processar distribuições de bonds, angles e dihedrals do GROMACS
+e gerar figuras e estatísticas.
+
+Uso: python3 plot_distributions.py
+"""
+
+import os
+import glob
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+from scipy import stats
+import seaborn as sns
+
+# Configuração de estilo dos gráficos
+plt.style.use('seaborn-v0_8-darkgrid')
+sns.set_palette("husl")
+
+# Criar diretório figures se não existir
+os.makedirs("figures/distances", exist_ok=True)
+os.makedirs("figures/angles", exist_ok=True)
+os.makedirs("figures/dihedrals", exist_ok=True)
+
+def read_xvg(filename):
+    """Lê arquivo .xvg do GROMACS ignorando comentários e headers."""
+    data = []
+    with open(filename, 'r') as f:
+        for line in f:
+            if line.startswith(('#', '@')):
+                continue
+            if line.strip():
+                try:
+                    values = line.strip().split()
+                    # Pode ser 1 ou 2 colunas (tempo, valor ou bin, densidade)
+                    if len(values) == 2:
+                        data.append([float(values[0]), float(values[1])])
+                    elif len(values) == 1:
+                        data.append([float(values[0])])
+                except ValueError:
+                    continue
+    return np.array(data)
+
+def plot_time_series(data, title, output_prefix, data_type):
+    """Plota série temporal e distribuição."""
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    
+    # Série temporal
+    if data.shape[1] >= 2:  # Tem dados de tempo
+        time = data[:, 0]
+        values = data[:, 1]
+        axes[0].plot(time, values, 'b-', alpha=0.7, linewidth=0.5)
+        axes[0].set_xlabel('Time (ps)')
+        axes[0].set_ylabel('Value')
+        axes[0].set_title(f'{title} - Time Series')
+        axes[0].grid(True, alpha=0.3)
+        
+        # Estatísticas
+        mean_val = np.mean(values)
+        std_val = np.std(values)
+        axes[0].axhline(y=mean_val, color='r', linestyle='--', 
+                       label=f'Mean: {mean_val:.3f}')
+        axes[0].axhline(y=mean_val + std_val, color='orange', 
+                       linestyle=':', alpha=0.7)
+        axes[0].axhline(y=mean_val - std_val, color='orange', 
+                       linestyle=':', alpha=0.7)
+        axes[0].legend()
+        
+        # Histograma/Distribuição
+        axes[1].hist(values, bins=50, density=True, alpha=0.7, 
+                    color='skyblue', edgecolor='black')
+        axes[1].set_xlabel('Value')
+        axes[1].set_ylabel('Probability Density')
+        axes[1].set_title(f'{title} - Distribution')
+        axes[1].grid(True, alpha=0.3)
+        
+        # Fit de distribuição normal
+        x = np.linspace(min(values), max(values), 100)
+        pdf = stats.norm.pdf(x, mean_val, std_val)
+        axes[1].plot(x, pdf, 'r-', linewidth=2, 
+                    label=f'Normal fit\nμ={mean_val:.3f}, σ={std_val:.3f}')
+        axes[1].legend()
+        
+    else:
+        # Arquivo de distribuição (2 colunas: bin, densidade)
+        bins = data[:, 0]
+        density = data[:, 1]
+        axes[1].bar(bins, density, width=bins[1]-bins[0] if len(bins) > 1 else 0.1, 
+                   alpha=0.7, color='skyblue', edgecolor='black')
+        axes[1].set_xlabel('Value')
+        axes[1].set_ylabel('Probability Density')
+        axes[1].set_title(f'{title} - Distribution')
+        axes[1].grid(True, alpha=0.3)
+        
+        # Estatísticas aproximadas
+        mean_val = np.sum(bins * density) / np.sum(density) if np.sum(density) > 0 else 0
+        var_val = np.sum(((bins - mean_val)**2) * density) / np.sum(density) if np.sum(density) > 0 else 0
+        std_val = np.sqrt(var_val)
+        
+        # Colocar texto com estatísticas
+        axes[1].text(0.05, 0.95, f'Mean: {mean_val:.3f}\nStd: {std_val:.3f}', 
+                    transform=axes[1].transAxes, verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    
+    plt.tight_layout()
+    
+    # Salvar em PNG e SVG
+    plt.savefig(f"{output_prefix}.png", dpi=150, bbox_inches='tight')
+    plt.savefig(f"{output_prefix}.svg", bbox_inches='tight')
+    plt.close()
+    
+    return mean_val, std_val
+
+# ============================================
+# Processar Bonds (Distances)
+# ============================================
+print("Processando Bonds...")
+bond_stats = []
+
+# Procurar arquivos bond_X.xvg no diretório bonds_mapped
+bond_files = sorted(glob.glob("bonds_mapped/bond_*.xvg"))
+
+for bond_file in bond_files:
+    # Extrair índice do nome do arquivo
+    idx = int(os.path.basename(bond_file).replace('bond_', '').replace('.xvg', ''))
+    
+    # Ler dados
+    data = read_xvg(bond_file)
+    
+    if len(data) > 0:
+        # Verificar se é série temporal (primeira coluna varia)
+        if data.shape[1] == 2 and np.std(data[:,0]) > 0.1:
+            mean_val, std_val = plot_time_series(
+                data, 
+                f'Bond {idx}', 
+                f'figures/distances/bond_{idx}', 
+                'bond'
+            )
+            bond_stats.append({
+                'index': idx,
+                'mean': mean_val,
+                'sd': std_val,
+                'type': 'bond'
+            })
+            print(f"  Bond {idx}: mean={mean_val:.4f}, sd={std_val:.4f}")
+        else:
+            # Tentar arquivo de distribuição
+            dist_file = f"bonds_mapped/distr_bond_{idx}.xvg"
+            if os.path.exists(dist_file):
+                dist_data = read_xvg(dist_file)
+                if len(dist_data) > 0:
+                    mean_val, std_val = plot_time_series(
+                        dist_data, 
+                        f'Bond {idx} Distribution', 
+                        f'figures/distances/bond_{idx}_dist', 
+                        'bond'
+                    )
+                    bond_stats.append({
+                        'index': idx,
+                        'mean': mean_val,
+                        'sd': std_val,
+                        'type': 'bond'
+                    })
+                    print(f"  Bond {idx} (dist): mean={mean_val:.4f}, sd={std_val:.4f}")
+
+# Salvar estatísticas de bonds
+if bond_stats:
+    df_bonds = pd.DataFrame(bond_stats)
+    df_bonds.to_csv('bond_statistics.tsv', sep='\t', index=False)
+    print(f"Salvo bond_statistics.tsv com {len(bond_stats)} bonds")
+
+# ============================================
+# Processar Angles
+# ============================================
+print("\nProcessando Angles...")
+angle_stats = []
+
+# Procurar arquivos ang_X.xvg no diretório angles_mapped
+angle_files = sorted(glob.glob("angles_mapped/ang_*.xvg"))
+
+for angle_file in angle_files:
+    idx = int(os.path.basename(angle_file).replace('ang_', '').replace('.xvg', ''))
+    
+    data = read_xvg(angle_file)
+    
+    if len(data) > 0:
+        if data.shape[1] == 2 and np.std(data[:,0]) > 0.1:
+            mean_val, std_val = plot_time_series(
+                data, 
+                f'Angle {idx}', 
+                f'figures/angles/angle_{idx}', 
+                'angle'
+            )
+            angle_stats.append({
+                'index': idx,
+                'mean': mean_val,
+                'sd': std_val,
+                'type': 'angle'
+            })
+            print(f"  Angle {idx}: mean={mean_val:.4f}, sd={std_val:.4f}")
+        else:
+            dist_file = f"angles_mapped/distr_ang_{idx}.xvg"
+            if os.path.exists(dist_file):
+                dist_data = read_xvg(dist_file)
+                if len(dist_data) > 0:
+                    mean_val, std_val = plot_time_series(
+                        dist_data, 
+                        f'Angle {idx} Distribution', 
+                        f'figures/angles/angle_{idx}_dist', 
+                        'angle'
+                    )
+                    angle_stats.append({
+                        'index': idx,
+                        'mean': mean_val,
+                        'sd': std_val,
+                        'type': 'angle'
+                    })
+                    print(f"  Angle {idx} (dist): mean={mean_val:.4f}, sd={std_val:.4f}")
+
+if angle_stats:
+    df_angles = pd.DataFrame(angle_stats)
+    df_angles.to_csv('angle_statistics.tsv', sep='\t', index=False)
+    print(f"Salvo angle_statistics.tsv com {len(angle_stats)} angles")
+
+# ============================================
+# Processar Dihedrals
+# ============================================
+print("\nProcessando Dihedrals...")
+dihedral_stats = []
+
+# Procurar arquivos dih_X.xvg no diretório dihedrals_mapped
+dihedral_files = sorted(glob.glob("dihedrals_mapped/dih_*.xvg"))
+
+for dihedral_file in dihedral_files:
+    idx = int(os.path.basename(dihedral_file).replace('dih_', '').replace('.xvg', ''))
+    
+    data = read_xvg(dihedral_file)
+    
+    if len(data) > 0:
+        if data.shape[1] == 2 and np.std(data[:,0]) > 0.1:
+            mean_val, std_val = plot_time_series(
+                data, 
+                f'Dihedral {idx}', 
+                f'figures/dihedrals/dihedral_{idx}', 
+                'dihedral'
+            )
+            dihedral_stats.append({
+                'index': idx,
+                'mean': mean_val,
+                'sd': std_val
+            })
+            print(f"  Dihedral {idx}: mean={mean_val:.4f}, sd={std_val:.4f}")
+        else:
+            dist_file = f"dihedrals_mapped/distr_dih_{idx}.xvg"
+            if os.path.exists(dist_file):
+                dist_data = read_xvg(dist_file)
+                if len(dist_data) > 0:
+                    mean_val, std_val = plot_time_series(
+                        dist_data, 
+                        f'Dihedral {idx} Distribution', 
+                        f'figures/dihedrals/dihedral_{idx}_dist', 
+                        'dihedral'
+                    )
+                    dihedral_stats.append({
+                        'index': idx,
+                        'mean': mean_val,
+                        'sd': std_val
+                    })
+                    print(f"  Dihedral {idx} (dist): mean={mean_val:.4f}, sd={std_val:.4f}")
+
+# Salvar dihedral_statistics.tsv (formato específico solicitado)
+if dihedral_stats:
+    df_dihedrals = pd.DataFrame(dihedral_stats)
+    df_dihedrals.to_csv('dihedral_statistics.tsv', sep='\t', index=False, 
+                        columns=['index', 'mean', 'sd'])
+    print(f"Salvo dihedral_statistics.tsv com {len(dihedral_stats)} dihedrals")
+
+print("\nProcessamento concluído!")
+print("Arquivos gerados:")
+print("  - bond_statistics.tsv")
+print("  - angle_statistics.tsv")
+print("  - dihedral_statistics.tsv")
+print("\nFiguras salvas em:")
+print("  - figures/distances/")
+print("  - figures/angles/")
+print("  - figures/dihedrals/")
+
+# Verificar se figuras foram criadas
+n_figures = len(glob.glob("figures/**/*.png", recursive=True))
+print(f"\nTotal de figuras geradas: {n_figures}")
+#!/usr/bin/env python3
+"""
+General script to generate a Martini-style .itp file from statistics and bead data.
+"""
+
+import os
+import json
+import argparse
+import pandas as pd
+from datetime import datetime
+
+# ============================================
+# Helper functions
+# ============================================
+
+def read_tsv(file_path):
+    """Read TSV file into pandas DataFrame."""
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File {file_path} not found.")
+    df = pd.read_csv(file_path, sep="\t")
+    return df
+
+def read_ndx(file_path):
+    """Read .ndx index file and return list of tuples."""
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File {file_path} not found.")
+    
+    indices = []
+    with open(file_path, 'r') as f:
+        current_group = None
+        for line in f:
+            line = line.strip()
+            if line.startswith('['):
+                current_group = line
+            elif line and not line.startswith(';'):
+                parts = line.split()
+                if len(parts) == 2:
+                    indices.append((int(parts[0]), int(parts[1])))
+                elif len(parts) == 3:
+                    indices.append(tuple(int(x) for x in parts))
+                elif len(parts) == 4:
+                    indices.append(tuple(int(x) for x in parts))
+    return indices
+
+def format_bond(i,j,length,force):
+    return f"  {i:2d}  {j:2d}   1    {length:.3f}    {force:d}   ;"
+
+def format_angle(i,j,k,angle,force):
+    return f"  {i:2d}  {j:2d}  {k:2d}   2    {angle:.1f}    {force:d}   ;"
+
+def format_dihedral(i,j,k,l,angle,force):
+    return f"  {i:2d}  {j:2d}  {k:2d}  {l:2d}   2    {angle:.1f}    {force:d}   ;"
+
+def get_bead_desc(beads, idx):
+    """Return bead description string from ATOMS_JSON."""
+    bead = next((b for b in beads if b['nr']==idx), None)
+    if bead:
+        return f"{bead['residue']} {bead['atom']}"
+    else:
+        return f"Bead {idx}"
+
+# ============================================
+# Argument parsing
+# ============================================
+
+parser = argparse.ArgumentParser(description="Generate a Martini .itp file from stats and ndx files.")
+parser.add_argument("--bonds", required=True, help="TSV file with bond statistics")
+parser.add_argument("--angles", required=True, help="TSV file with angle statistics")
+parser.add_argument("--dihedrals", required=True, help="TSV file with dihedral statistics")
+parser.add_argument("--atoms_json", required=True, help="JSON file with atoms/beads (type, mass, charge)")
+parser.add_argument("--ndx_bounds", required=True, help="Ndx file for bonds")
+parser.add_argument("--ndx_angles", required=True, help="Ndx file for angles")
+parser.add_argument("--ndx_dihedrals", required=True, help="Ndx file for dihedrals")
+parser.add_argument("--molecule_name", default="FA2", help="Molecule name")
+parser.add_argument("--dihedrals_target", action='store_true', help="Use mean angle for dihedrals; default False uses 0")
+parser.add_argument("--exclusion", action='store_true', help="Enable custom exclusions (requires --exclusion_json)")
+parser.add_argument("--exclusion_json", help="JSON file with exclusion atom indices (required if --exclusion)")
+
+args = parser.parse_args()
+
+if args.exclusion and not args.exclusion_json:
+    parser.error("--exclusion requires --exclusion_json")
+
+# ============================================
+# Load files
+# ============================================
+
+bonds_df = read_tsv(args.bonds)
+angles_df = read_tsv(args.angles)
+dihedrals_df = read_tsv(args.dihedrals)
+
+with open(args.atoms_json, 'r') as f:
+    atoms_data = json.load(f)
+
+bond_pairs = read_ndx(args.ndx_bounds)
+angle_triplets = read_ndx(args.ndx_angles)
+dihedral_quartets = read_ndx(args.ndx_dihedrals)
+
+exclusion_list = []
+if args.exclusion:
+    with open(args.exclusion_json, 'r') as f:
+        exclusion_list = json.load(f)
+
+# ============================================
+# Force constants (default Martini 3)
+# ============================================
+FORCE_BOND = 1250
+FORCE_ANGLE = 25
+FORCE_DIHEDRAL = 25
+
+# ============================================
+# Generate ITP
+# ============================================
+
+output_file = f"{args.molecule_name}_final.itp"
+timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+with open(output_file, 'w') as f:
+    f.write(f";;;;;; {args.molecule_name} - Final topology\n")
+    f.write(f"; Generated on {timestamp}\n\n")
+
+    # Molecule type
+    f.write("[ moleculetype ]\n")
+    f.write(f"; molname    nrexcl\n  {args.molecule_name}     1\n\n")
+
+    # Atoms
+    f.write("[ atoms ]\n")
+    f.write("; nr type resnr residue atom cgnr charge mass\n")
+    for bead in atoms_data:
+        nr = bead['nr']
+        typ = bead['type']
+        resnr = bead['resnr']
+        residue = bead['residue']
+        atom = bead['atom']
+        cgnr = bead['cgnr']
+        charge = bead['charge']
+        mass = bead['mass']
+        desc = f"{residue} {atom}"
+        f.write(f"  {nr:2d}  {typ:4s}  {resnr:2d}  {residue:4s}  {atom:3s}  {cgnr:2d}  {charge:6.2f}  {mass:6.2f}   ; {desc}\n")
+    f.write("\n")
+
+    # Bonds
+    f.write("[ bonds ]\n")
+    f.write("; i  j  funct length force.k\n")
+    for idx, row in bonds_df.iterrows():
+        if idx < len(bond_pairs):
+            i,j = bond_pairs[idx]
+            f.write(format_bond(i,j,row['mean'],FORCE_BOND) + f" ; σ={row['sd']:.4f} {get_bead_desc(atoms_data,i)}-{get_bead_desc(atoms_data,j)}\n")
+
+    f.write("\n")
+
+    # Angles
+    f.write("[ angles ]\n")
+    f.write("; i  j  k  funct angle force.k\n")
+    for idx, row in angles_df.iterrows():
+        if idx < len(angle_triplets):
+            i,j,k = angle_triplets[idx]
+            f.write(format_angle(i,j,k,row['mean'],FORCE_ANGLE) + f" ; σ={row['sd']:.4f} {get_bead_desc(atoms_data,i)}-{get_bead_desc(atoms_data,j)}-{get_bead_desc(atoms_data,k)}\n")
+
+    f.write("\n")
+
+    # Dihedrals
+    f.write("[ dihedrals ]\n")
+    f.write("; i  j  k  l  funct angle force.k\n")
+    for idx, row in dihedrals_df.iterrows():
+        if idx < len(dihedral_quartets):
+            i,j,k,l = dihedral_quartets[idx]
+            angle_val = row['mean'] if args.dihedrals_target else 0
+            f.write(format_dihedral(i,j,k,l,angle_val,FORCE_DIHEDRAL) + f" ; original mean={row['mean']:.1f} σ={row['sd']:.1f}\n")
+
+    # Exclusions
+    f.write("\n[ exclusions ]\n")
+    if args.exclusion:
+        f.write("; custom exclusions provided\n")
+        for line in exclusion_list:
+            f.write(" ".join(str(x) for x in line) + "\n")
+    else:
+        f.write("; full exclusions for 1-4 and 1-5\n")
+        all_indices = [str(bead['nr']) for bead in atoms_data]
+        f.write(" ".join(all_indices) + "\n")
+
+print(f"\nITP file generated: {output_file}")
+#!/usr/bin/env python3
+"""
+Generate Martini-style .itp with automatic force constant adjustment
+based on reference and simulated statistics.
+
+FINAL VERSION WITH SIMULATED ANNEALING:
+- Bayesian force update (Gibbs-like sampling)
+- Simulated Annealing acceptance for global error
+- Reuse previous .itp if iteration is rejected
+"""
+
+import os
+import json
+import argparse
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+import shutil
+import math
+import random
+from datetime import datetime
+
+# ============================================
+# Helper functions
+# ============================================
+
+def read_tsv(file_path):
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File {file_path} not found.")
+    return pd.read_csv(file_path, sep="\t")
+
+def read_ndx(file_path):
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File {file_path} not found.")
+    
+    indices = []
+    with open(file_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith('[') or line.startswith(';') or not line:
+                continue
+            parts = line.split()
+            indices.append(tuple(int(x) for x in parts))
+    return indices
+
+def format_bond(i,j,length,force):
+    return f"  {i:2d}  {j:2d}   1    {length:.3f}    {force:.1f}   ;"
+
+def format_angle(i,j,k,angle,force):
+    return f"  {i:2d}  {j:2d}  {k:2d}   2    {angle:.1f}    {force:.1f}   ;"
+
+def format_dihedral(i,j,k,l,angle,force):
+    return f"  {i:2d}  {j:2d}  {k:2d}  {l:2d}   2    {angle:.1f}    {force:.1f}   ;"
+
+# ============================================
+# Bayesian update (Gibbs-like)
+# ============================================
+
+def choose_best_force(F_orig, sigma_ref, sigma_curr, sigma_prev):
+    if sigma_curr == 0:
+        return F_orig, "NOT CHANGED (zero sigma)"
+
+    if sigma_prev is not None:
+        mu_prior = sigma_prev
+        var_prior = (0.2 * sigma_prev)**2
+    else:
+        mu_prior = sigma_curr
+        var_prior = (0.5 * sigma_curr)**2
+
+    mu_like = sigma_curr
+    var_like = (0.2 * sigma_curr)**2
+
+    var_post = 1 / (1/var_prior + 1/var_like)
+    mu_post = var_post * (mu_prior/var_prior + mu_like/var_like)
+
+    samples = np.random.normal(mu_post, np.sqrt(var_post), size=20)
+
+    F_candidates = []
+    for s in samples:
+        if s <= 0:
+            continue
+        F_candidates.append(F_orig * (s / sigma_ref))
+
+    if not F_candidates:
+        return F_orig, "NOT CHANGED (no samples)"
+
+    best_F = F_orig
+    best_error = abs(sigma_ref - sigma_curr)
+
+    for F_cand in F_candidates:
+        sigma_pred = sigma_curr * (F_orig / F_cand)
+        err = abs(sigma_ref - sigma_pred)
+        if err < best_error:
+            best_error = err
+            best_F = F_cand
+
+    if best_F == F_orig:
+        return F_orig, "NOT CHANGED (Bayes reject)"
+    else:
+        return best_F, "CHANGED (Bayes)"
+
+# ============================================
+# Argument parsing
+# ============================================
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--bonds_ref", required=True)
+parser.add_argument("--angles_ref", required=True)
+parser.add_argument("--dihedrals_ref", required=True)
+parser.add_argument("--bonds_sim", required=True)
+parser.add_argument("--angles_sim", required=True)
+parser.add_argument("--dihedrals_sim", required=True)
+parser.add_argument("--atoms_json", required=True)
+parser.add_argument("--ndx_bounds", required=True)
+parser.add_argument("--ndx_angles", required=True)
+parser.add_argument("--ndx_dihedrals", required=True)
+parser.add_argument("--molecule_name", default="FA2")
+parser.add_argument("--dihedrals_target", action='store_true')
+parser.add_argument("--itp_out", default="FA2_final.itp")
+
+args = parser.parse_args()
+
+# ============================================
+# Detect iteration
+# ============================================
+
+current_iter = int(os.path.basename(args.bonds_sim).split("_")[-1].split(".")[0])
+prev_iter = current_iter - 1
+
+base_dir = os.path.abspath(os.path.join(os.path.dirname(args.bonds_sim), "../../"))
+prev_stat_dir = os.path.join(base_dir, f"iter_{prev_iter}", "stat")
+
+# ============================================
+# Load data
+# ============================================
+
+bonds_ref_df = read_tsv(args.bonds_ref)
+angles_ref_df = read_tsv(args.angles_ref)
+dihedrals_ref_df = read_tsv(args.dihedrals_ref)
+
+bonds_sim_df = read_tsv(args.bonds_sim)
+angles_sim_df = read_tsv(args.angles_sim)
+dihedrals_sim_df = read_tsv(args.dihedrals_sim)
+
+def safe_load(file):
+    return read_tsv(file) if os.path.exists(file) else None
+
+bonds_prev_df = safe_load(f"{prev_stat_dir}/bond_{prev_iter}.tsv")
+angles_prev_df = safe_load(f"{prev_stat_dir}/angle_{prev_iter}.tsv")
+dihedrals_prev_df = safe_load(f"{prev_stat_dir}/dihedral_{prev_iter}.tsv")
+
+# ============================================
+# Load topology
+# ============================================
+
+with open(args.atoms_json) as f:
+    atoms_data = json.load(f)
+
+bond_pairs = read_ndx(args.ndx_bounds)
+angle_triplets = read_ndx(args.ndx_angles)
+dihedral_quartets = read_ndx(args.ndx_dihedrals)
+
+# ============================================
+# Global error
+# ============================================
+
+def compute_global_error(df_ref, df_sim):
+    return ((df_ref['sd'] - df_sim['sd']).abs()).mean()
+
+global_error = (
+    compute_global_error(bonds_ref_df, bonds_sim_df) +
+    compute_global_error(angles_ref_df, angles_sim_df) +
+    compute_global_error(dihedrals_ref_df, dihedrals_sim_df)
+)
+
+# ============================================
+# Save iteration evolution
+# ============================================
+
+inter_dir = os.path.abspath(os.path.join(os.path.dirname(args.itp_out), "../inter"))
+os.makedirs(inter_dir, exist_ok=True)
+
+iteration_file = os.path.join(inter_dir, "dihedral_iteration.tsv")
+
+new_row = pd.DataFrame({
+    "iteration": [current_iter],
+    "global_error": [global_error]
+})
+
+# ============================================
+# Simulated Annealing acceptance
+# ============================================
+
+T0 = 10.0
+alpha = 0.85
+T = T0 * (alpha ** current_iter)
+
+if os.path.exists(iteration_file):
+    old = pd.read_csv(iteration_file, sep="\t")
+    prev_last = old.sort_values("iteration").iloc[-1]["global_error"]
+    delta_E = global_error - prev_last
+
+    if delta_E <= 0:
+        accept = True
+        reason = "IMPROVED"
+    else:
+        prob = math.exp(-delta_E / T)
+        rand_val = random.random()
+        if rand_val < prob:
+            accept = True
+            reason = f"ACCEPTED (SA prob={prob:.4f})"
+        else:
+            accept = False
+            reason = f"REJECTED (SA prob={prob:.4f})"
+
+    print(f"\nSA decision: ΔE={delta_E:.4f}, T={T:.4f} → {reason}")
+
+    if not accept:
+        print("Reverting to previous iteration (Simulated Annealing)")
+
+        prev_itp = os.path.join(
+            base_dir,
+            f"iter_{prev_iter}",
+            os.path.basename(args.itp_out)
+        )
+
+        shutil.copy(prev_itp, args.itp_out)
+        print(f"Reused previous ITP: {prev_itp}")
+        print(f"Output written to: {args.itp_out}")
+        exit(0)
+
+    merged = pd.concat([old, new_row]).drop_duplicates("iteration").sort_values("iteration")
+else:
+    merged = new_row
+
+merged.to_csv(iteration_file, sep="\t", index=False)
+
+# ============================================
+# Plot evolution
+# ============================================
+
+plt.figure()
+plt.plot(
+    merged["iteration"],
+    merged["global_error"],
+    marker='o',
+    markeredgecolor='black'
+)
+plt.xlabel("iteration")
+plt.ylabel("global error")
+plt.grid()
+plt.savefig(os.path.join(inter_dir, "dihedral_evolution.png"))
+plt.savefig(os.path.join(inter_dir, "dihedral_evolution.svg"))
+plt.close()
+
+# ============================================
+# Generate ITP
+# ============================================
+
+FORCE_BOND = 1250
+FORCE_ANGLE = 25
+FORCE_DIHEDRAL = 25
+
+timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+with open(args.itp_out, 'w') as f:
+    f.write(f";;;;;; {args.molecule_name} - Final topology\n")
+    f.write(f"; Generated on {timestamp}\n\n")
+
+    f.write("[ moleculetype ]\n")
+    f.write(f"  {args.molecule_name} 1\n\n")
+
+    f.write("[ atoms ]\n")
+    for bead in atoms_data:
+        f.write(f"  {bead['nr']:2d}  {bead['type']}  {bead['resnr']}  {bead['residue']}  {bead['atom']}  {bead['cgnr']}  {bead['charge']}  {bead['mass']}\n")
+
+    # Bonds (FIX)
+    f.write("\n[ bonds ]\n")
+    for idx, row in bonds_ref_df.iterrows():
+        if idx < len(bond_pairs):
+            i, j = bond_pairs[idx]
+        else:
+            i, j = 0, 0
+
+        sigma_sim = bonds_sim_df.loc[idx,'sd'] if idx < len(bonds_sim_df) else row['sd']
+        prev_sigma = bonds_prev_df.loc[idx,'sd'] if bonds_prev_df is not None and idx < len(bonds_prev_df) else None
+
+        F_new, status = choose_best_force(FORCE_BOND, row['sd'], sigma_sim, prev_sigma)
+
+        f.write(format_bond(i,j,row['mean'],F_new) +
+                f" ; σ_ref={row['sd']:.4f} σ_sim={sigma_sim:.4f} "
+                f"σ_prev={prev_sigma if prev_sigma is not None else 'NA'} status={status}\n")
+
+    # Angles (FIX)
+    f.write("\n[ angles ]\n")
+    for idx, row in angles_ref_df.iterrows():
+        if idx < len(angle_triplets):
+            i, j, k = angle_triplets[idx]
+        else:
+            i, j, k = 0, 0, 0
+
+        sigma_sim = angles_sim_df.loc[idx,'sd'] if idx < len(angles_sim_df) else row['sd']
+        prev_sigma = angles_prev_df.loc[idx,'sd'] if angles_prev_df is not None and idx < len(angles_prev_df) else None
+
+        F_new, status = choose_best_force(FORCE_ANGLE, row['sd'], sigma_sim, prev_sigma)
+
+        f.write(format_angle(i,j,k,row['mean'],F_new) +
+                f" ; σ_ref={row['sd']:.4f} σ_sim={sigma_sim:.4f} "
+                f"σ_prev={prev_sigma if prev_sigma is not None else 'NA'} status={status}\n")
+
+    # Dihedrals (FIX)
+    f.write("\n[ dihedrals ]\n")
+    f.write("; i  j  k  l  funct angle force.k\n")
+    for idx, row in dihedrals_ref_df.iterrows():
+        if idx < len(dihedral_quartets):
+            i, j, k, l = dihedral_quartets[idx]
+        else:
+            i, j, k, l = 0, 0, 0, 0
+
+        sigma_sim = dihedrals_sim_df.loc[idx,'sd'] if idx < len(dihedrals_sim_df) else row['sd']
+        prev_sigma = dihedrals_prev_df.loc[idx,'sd'] if dihedrals_prev_df is not None and idx < len(dihedrals_prev_df) else None
+
+        angle_val = row['mean'] if args.dihedrals_target else 0
+
+        F_new, status = choose_best_force(FORCE_DIHEDRAL, row['sd'], sigma_sim, prev_sigma)
+
+        f.write(format_dihedral(i,j,k,l,angle_val,F_new) +
+                f" ; σ_ref={row['sd']:.4f} "
+                f"σ_sim={sigma_sim:.4f} "
+                f"σ_prev={prev_sigma if prev_sigma is not None else 'NA'} "
+                f"status={status}\n")
+
+print(f"\nITP file generated: {args.itp_out}")
+import os
+import glob
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+from scipy import stats
+import seaborn as sns
+import re
+import argparse
+
+
+# ============================================
+# Argument parser
+# ============================================
+
+parser = argparse.ArgumentParser(description="Process XVG files (bonds, angles, dihedrals)")
+
+# Inputs
+parser.add_argument("--bonds_dir", default="bonds_mapped")
+parser.add_argument("--angles_dir", default="angles_mapped")
+parser.add_argument("--dihedrals_dir", default="dihedrals_mapped")
+
+# Outputs (figures)
+parser.add_argument("--figures_dir", default="figures")
+
+# Outputs (tables)
+parser.add_argument("--bond_out", default="bond_statistics.tsv")
+parser.add_argument("--angle_out", default="angle_statistics.tsv")
+parser.add_argument("--dihedral_out", default="dihedral_statistics.tsv")
+
+args = parser.parse_args()
+
+
+# ============================================
+# Plot style configuration
+# ============================================
+
+plt.style.use('seaborn-v0_8-darkgrid')
+sns.set_palette("husl")
+
+
+# ============================================
+# Create figure directories
+# ============================================
+
+dist_dir = os.path.join(args.figures_dir, "distances")
+ang_dir = os.path.join(args.figures_dir, "angles")
+dih_dir = os.path.join(args.figures_dir, "dihedrals")
+
+os.makedirs(dist_dir, exist_ok=True)
+os.makedirs(ang_dir, exist_ok=True)
+os.makedirs(dih_dir, exist_ok=True)
+
+
+# ============================================
+# Helper functions
+# ============================================
+
+def extract_index(filename):
+    return int(re.search(r'\d+', os.path.basename(filename)).group())
+
+
+def read_xvg(filename):
+    data = []
+    with open(filename, 'r') as f:
+        for line in f:
+            if line.startswith(('#', '@')):
+                continue
+            if line.strip():
+                try:
+                    values = line.strip().split()
+                    if len(values) == 2:
+                        data.append([float(values[0]), float(values[1])])
+                    elif len(values) == 1:
+                        data.append([float(values[0])])
+                except ValueError:
+                    continue
+    return np.array(data)
+
+
+def plot_time_series(data, title, output_prefix, data_type):
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    if data.shape[1] >= 2:
+        time = data[:, 0]
+        values = data[:, 1]
+
+        axes[0].plot(time, values, 'b-', alpha=0.7, linewidth=0.5)
+        axes[0].set_xlabel('Time (ps)')
+        axes[0].set_ylabel('Value')
+        axes[0].set_title(f'{title} - Time Series')
+        axes[0].grid(True, alpha=0.3)
+
+        mean_val = np.mean(values)
+        std_val = np.std(values)
+
+        axes[0].axhline(y=mean_val, color='r', linestyle='--',
+                        label=f'Mean: {mean_val:.3f}')
+        axes[0].axhline(y=mean_val + std_val, color='orange',
+                        linestyle=':', alpha=0.7)
+        axes[0].axhline(y=mean_val - std_val, color='orange',
+                        linestyle=':', alpha=0.7)
+        axes[0].legend()
+
+        axes[1].hist(values, bins=50, density=True, alpha=0.7,
+                     color='skyblue', edgecolor='black')
+        axes[1].set_xlabel('Value')
+        axes[1].set_ylabel('Probability Density')
+        axes[1].set_title(f'{title} - Distribution')
+        axes[1].grid(True, alpha=0.3)
+
+        x = np.linspace(min(values), max(values), 100)
+        pdf = stats.norm.pdf(x, mean_val, std_val)
+        axes[1].plot(x, pdf, 'r-', linewidth=2,
+                     label=f'Normal fit\nμ={mean_val:.3f}, σ={std_val:.3f}')
+        axes[1].legend()
+
+    else:
+        bins = data[:, 0]
+        density = data[:, 1]
+
+        axes[1].bar(
+            bins,
+            density,
+            width=bins[1] - bins[0] if len(bins) > 1 else 0.1,
+            alpha=0.7,
+            color='skyblue',
+            edgecolor='black'
+        )
+
+        axes[1].set_xlabel('Value')
+        axes[1].set_ylabel('Probability Density')
+        axes[1].set_title(f'{title} - Distribution')
+        axes[1].grid(True, alpha=0.3)
+
+        mean_val = np.sum(bins * density) / np.sum(density) if np.sum(density) > 0 else 0
+        var_val = np.sum(((bins - mean_val)**2) * density) / np.sum(density) if np.sum(density) > 0 else 0
+        std_val = np.sqrt(var_val)
+
+        axes[1].text(
+            0.05,
+            0.95,
+            f'Mean: {mean_val:.3f}\nStd: {std_val:.3f}',
+            transform=axes[1].transAxes,
+            verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+        )
+
+    plt.tight_layout()
+
+    plt.savefig(f"{output_prefix}.png", dpi=150, bbox_inches='tight')
+    plt.savefig(f"{output_prefix}.svg", bbox_inches='tight')
+    plt.close()
+
+    return mean_val, std_val
+
+
+# ============================================
+# Process Bonds
+# ============================================
+
+print("Processing Bonds...")
+bond_stats = []
+
+bond_files = sorted(
+    glob.glob(os.path.join(args.bonds_dir, "bond_*.xvg")),
+    key=extract_index
+)
+
+for bond_file in bond_files:
+
+    idx = int(os.path.basename(bond_file).replace('bond_', '').replace('.xvg', ''))
+    data = read_xvg(bond_file)
+
+    if len(data) > 0:
+
+        if data.shape[1] == 2 and np.std(data[:, 0]) > 0.1:
+
+            mean_val, std_val = plot_time_series(
+                data,
+                f'Bond {idx}',
+                f'{dist_dir}/bond_{idx}',
+                'bond'
+            )
+
+            bond_stats.append({
+                'index': idx,
+                'mean': mean_val,
+                'sd': std_val,
+                'type': 'bond'
+            })
+
+            print(f"  Bond {idx}: mean={mean_val:.4f}, sd={std_val:.4f}")
+
+        else:
+
+            dist_file = os.path.join(args.bonds_dir, f"distr_bond_{idx}.xvg")
+
+            if os.path.exists(dist_file):
+
+                dist_data = read_xvg(dist_file)
+
+                if len(dist_data) > 0:
+
+                    mean_val, std_val = plot_time_series(
+                        dist_data,
+                        f'Bond {idx} Distribution',
+                        f'{dist_dir}/bond_{idx}_dist',
+                        'bond'
+                    )
+
+                    bond_stats.append({
+                        'index': idx,
+                        'mean': mean_val,
+                        'sd': std_val,
+                        'type': 'bond'
+                    })
+
+                    print(f"  Bond {idx} (dist): mean={mean_val:.4f}, sd={std_val:.4f}")
+
+
+if bond_stats:
+    df_bonds = pd.DataFrame(bond_stats)
+    df_bonds.to_csv(args.bond_out, sep='\t', index=False)
+    print(f"Saved {args.bond_out} with {len(bond_stats)} bonds")
+
+
+# ============================================
+# Process Angles
+# ============================================
+
+print("\nProcessing Angles...")
+angle_stats = []
+
+angle_files = sorted(
+    glob.glob(os.path.join(args.angles_dir, "ang_*.xvg")),
+    key=extract_index
+)
+
+for angle_file in angle_files:
+
+    idx = int(os.path.basename(angle_file).replace('ang_', '').replace('.xvg', ''))
+    data = read_xvg(angle_file)
+
+    if len(data) > 0:
+
+        if data.shape[1] == 2 and np.std(data[:, 0]) > 0.1:
+
+            mean_val, std_val = plot_time_series(
+                data,
+                f'Angle {idx}',
+                f'{ang_dir}/angle_{idx}',
+                'angle'
+            )
+
+            angle_stats.append({
+                'index': idx,
+                'mean': mean_val,
+                'sd': std_val,
+                'type': 'angle'
+            })
+
+            print(f"  Angle {idx}: mean={mean_val:.4f}, sd={std_val:.4f}")
+
+        else:
+
+            dist_file = os.path.join(args.angles_dir, f"distr_ang_{idx}.xvg")
+
+            if os.path.exists(dist_file):
+
+                dist_data = read_xvg(dist_file)
+
+                if len(dist_data) > 0:
+
+                    mean_val, std_val = plot_time_series(
+                        dist_data,
+                        f'Angle {idx} Distribution',
+                        f'{ang_dir}/angle_{idx}_dist',
+                        'angle'
+                    )
+
+                    angle_stats.append({
+                        'index': idx,
+                        'mean': mean_val,
+                        'sd': std_val,
+                        'type': 'angle'
+                    })
+
+                    print(f"  Angle {idx} (dist): mean={mean_val:.4f}, sd={std_val:.4f}")
+
+
+if angle_stats:
+    df_angles = pd.DataFrame(angle_stats)
+    df_angles.to_csv(args.angle_out, sep='\t', index=False)
+    print(f"Saved {args.angle_out} with {len(angle_stats)} angles")
+
+
+# ============================================
+# Process Dihedrals
+# ============================================
+
+print("\nProcessing Dihedrals...")
+dihedral_stats = []
+
+dihedral_files = sorted(
+    glob.glob(os.path.join(args.dihedrals_dir, "dih_*.xvg")),
+    key=extract_index
+)
+
+for dihedral_file in dihedral_files:
+
+    idx = int(os.path.basename(dihedral_file).replace('dih_', '').replace('.xvg', ''))
+    data = read_xvg(dihedral_file)
+
+    if len(data) > 0:
+
+        if data.shape[1] == 2 and np.std(data[:, 0]) > 0.1:
+
+            mean_val, std_val = plot_time_series(
+                data,
+                f'Dihedral {idx}',
+                f'{dih_dir}/dihedral_{idx}',
+                'dihedral'
+            )
+
+            dihedral_stats.append({
+                'index': idx,
+                'mean': mean_val,
+                'sd': std_val
+            })
+
+            print(f"  Dihedral {idx}: mean={mean_val:.4f}, sd={std_val:.4f}")
+
+        else:
+
+            dist_file = os.path.join(args.dihedrals_dir, f"distr_dih_{idx}.xvg")
+
+            if os.path.exists(dist_file):
+
+                dist_data = read_xvg(dist_file)
+
+                if len(dist_data) > 0:
+
+                    mean_val, std_val = plot_time_series(
+                        dist_data,
+                        f'Dihedral {idx} Distribution',
+                        f'{dih_dir}/dihedral_{idx}_dist',
+                        'dihedral'
+                    )
+
+                    dihedral_stats.append({
+                        'index': idx,
+                        'mean': mean_val,
+                        'sd': std_val
+                    })
+
+                    print(f"  Dihedral {idx} (dist): mean={mean_val:.4f}, sd={std_val:.4f}")
+
+
+if dihedral_stats:
+    df_dihedrals = pd.DataFrame(dihedral_stats)
+    df_dihedrals.to_csv(
+        args.dihedral_out,
+        sep='\t',
+        index=False,
+        columns=['index', 'mean', 'sd']
+    )
+
+    print(f"Saved {args.dihedral_out} with {len(dihedral_stats)} dihedrals")
+
+
+# ============================================
+# Final summary
+# ============================================
+
+print("\nProcessing completed!")
+
+print("Generated files:")
+print(f"  - {args.bond_out}")
+print(f"  - {args.angle_out}")
+print(f"  - {args.dihedral_out}")
+
+print("\nFigures saved in:")
+print(f"  - {dist_dir}")
+print(f"  - {ang_dir}")
+print(f"  - {dih_dir}")
+
+n_figures = len(glob.glob(os.path.join(args.figures_dir, "**/*.png"), recursive=True))
+print(f"\nTotal figures generated: {n_figures}")

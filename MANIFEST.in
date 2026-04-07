@@ -1,0 +1,19 @@
+include README.md
+include LICENSE
+include requirements.txt
+include MANIFEST.in
+
+# Include data files
+recursive-include data/ff_files *
+recursive-include data/mdp *
+
+# Include scripts and binaries
+recursive-include bayesian_potentials/bin *
+recursive-include bayesian_potentials/scripts *.py
+
+# Exclude cache and backup files
+global-exclude __pycache__
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *.swp
+global-exclude *.bak
