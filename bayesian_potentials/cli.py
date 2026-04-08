@@ -262,7 +262,7 @@ def main():
     pipeline_parser.add_argument("--name_molecule", 
                                 type=str, 
                                 default="molecule",
-                                help="Molecule name for the ligand (default: CG)")
+                                help="Molecule name for the ligand (default: molecule)")
     pipeline_parser.add_argument("--number_molecule", 
                                 type=int, 
                                 default=1,
