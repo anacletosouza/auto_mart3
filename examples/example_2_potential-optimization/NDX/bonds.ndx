@@ -1,0 +1,90 @@
+[ bonds ]
+; ========================================
+; Intra-residue bonds (within each residue)
+; ========================================
+
+; ASN (2 beads)
+1 2
+
+; 1BGLCN (4 beads - triangular with N-acetyl branch)
+3 4
+4 6
+6 3
+4 5
+
+; 2AFUC (3 beads - triangular)
+7 8
+8 9
+9 7
+
+; 3BGLCN (4 beads - triangular with N-acetyl branch)
+10 12
+12 13
+13 10
+11 12
+
+; 4BMAN (3 beads - triangular)
+14 15
+15 16
+16 14
+
+; 5AMAN (3 beads - triangular)
+17 18
+18 19
+19 17
+
+; 6BGLCN (4 beads - triangular with N-acetyl branch)
+20 22
+22 23
+23 20
+21 22
+
+; 7AMAN (3 beads - triangular)
+24 25
+25 26
+26 24
+
+; 8BGLCN (4 beads - triangular with N-acetyl branch)
+27 29
+29 30
+30 27
+29 28
+
+; ========================================
+; Glycosidic bonds (inter-residue connections)
+; ========================================
+
+; ASN(SC1) - 1BGLCN(C1) : N-glycosidic bond
+2 3
+
+; 1BGLCN(C4) - 2AFUC(C1) 
+6 7
+
+; 1BGLCN(C3) - 3BGLCN(C1) 
+4 10
+
+; 3BGLCN(C4) - 4BMAN(C1) 
+13 14
+
+; 4BMAN(C4) - 5AMAN(C1) 
+16 17
+
+; 5AMAN(C2) - 6BGLCN(C1) 
+18 20
+
+; 7AMAN(C2) - 8BGLCN(C1) 
+25 27
+
+; 4BMAN(C2) - 7AMAN(C1) 
+15 24
+
+
+; ========================================
+; Note: Total number of bonds should be:
+; ASN: 1
+; 4x BGLCN: 4 bonds each × 4 residues = 16
+; 3x triangular sugars (AFUC, BMAN, AMAN): 3 bonds each × 5 residues = 15
+; Glycosidic bonds: 8
+; Total = 1 + 16 + 15 + 8 = 40 bonds
+; ========================================
+

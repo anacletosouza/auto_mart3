@@ -1,0 +1,62 @@
+; NPT equilibration for Coarse-Grained glycoprotein system
+
+integrator               = md
+dt                       = 0.002; (step = 2 fs)
+nsteps                   = 50000000      ; 100000 ps (100 ns)
+
+; Center of mass removal
+comm-mode                = Linear
+nstcomm                  = 100
+comm-grps                = glycoprotein Water_ions
+
+; Output control
+nstxout                  = 0
+nstvout                  = 0
+nstfout                  = 0
+nstlog                   = 50000
+nstenergy                = 50000
+nstxout-compressed       = 50000
+compressed-x-precision   = 50000
+
+; Neighborsearching
+cutoff-scheme            = Verlet
+nstlist                  = 20
+rlist                    = 1.35
+verlet-buffer-tolerance  = -1
+
+; Electrostatics
+coulombtype              = reaction-field
+rcoulomb                 = 1.1
+epsilon_r                = 15
+epsilon_rf               = 0
+
+vdw_type                 = cutoff
+vdw-modifier             = Potential-shift-verlet
+rvdw                     = 1.1
+
+pbc                      = xyz
+
+; Temperature coupling (EXACTLY as your working NVT)
+tcoupl                   = v-rescale
+tc-grps                  = glycoprotein Water_ions
+tau_t                    = 1.0 1.0
+ref_t                    = 310 310
+
+; ============= PRESSURE COUPLING ADDED FOR NPT =============
+
+Pcoupl                   = C-rescale
+Pcoupltype               = semiisotropic
+tau_p                    = 5.0               
+compressibility          = 4.5e-5 4.5e-5      
+ref_p                    = 1.0 1.0
+; ============================================================
+
+; Velocity generation (CHANGED for continuation)
+gen_vel                  = no               ; Continue from NVT
+gen_temp                 = 310
+continuation             = yes              ; Continuing from NVT
+
+constraints              = none
+lincs_order              = 8
+lincs_iter               = 2
+lincs_warnangle          = 90

@@ -1,0 +1,4 @@
+[ atomtypes ]
+; name  at.num  mass    charge  ptype   sigma   epsilon
+NA      11      22.9898  1.0    A       0.235   0.00277
+CL      17      35.45   -1.0    A       0.440   0.10

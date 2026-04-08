@@ -1,0 +1,18 @@
+
+[ moleculetype ]
+; Sodium Ion
+; molname  nrexcl
+NA         3
+
+[ atoms ]
+; id    at type     res nr  res name   at name  cg nr  charge    mass
+  1     NA          1      NA         NA       1       1.000    22.98977 ; qtot = 1.000000
+
+[ moleculetype ]
+; Chloride Ion
+; molname  nrexcl
+CL         3
+
+[ atoms ]
+; id    at type     res nr  res name   at name  cg nr  charge    mass
+  1     CL          1      CL         CL       1      -1.000    35.45000 ; qtot = -1.000000

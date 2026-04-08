@@ -1,0 +1,45 @@
+[ dihedrals ]
+; i j k l where j-k define a linear equation
+
+;;;;;;; internal dihedral for 1BG
+
+6 3 4 5
+
+;;;;;;; internal dihedral for 3BG
+
+13 10 12 11
+
+;;;;;;; internal dihedral for 6BG
+
+23 20 22 21
+
+;;;;;;; internal dihedral for 8BG
+
+30 27 29 28
+
+;;;;;;; external dihedral
+
+;;;;;;; ASN to 1BG
+4 3 5 2
+
+;;;;;;; 1BG to 2AF
+9 7 8 6
+
+;;;;;;; 3BG to 1BG
+12 10 13 4
+
+;;;;;;; 3BG to 4BM
+10 12 13 14
+
+;;;;;;; 5AM to 4BM
+18 19 17 14
+
+;;;;;;; 5AM to 6BG
+19 17 18 20
+
+;;;;;;; 4BM to 7AM
+14 16 15 24
+
+;;;;;;; 7AM to 8BG
+26 24 25 27
+
