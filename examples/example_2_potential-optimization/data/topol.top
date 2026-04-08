@@ -1,0 +1,24 @@
+
+;;; Topology for FA2-ASN system in Martini 3
+
+#include "../ff_files/martini_v3.0.0.itp"
+#include "../ff_files/martini_v3.0.0_ions_v1.itp"
+#include "../ff_files/martini_v3.0.0_solvents_v1.itp"
+#include "FA2_final.itp"
+
+; glycoprotein position restraints
+#ifdef POSRES_ASN_FA2
+#include "posre_ASN_FA2.itp"
+#endif
+
+[ system ]
+; Name
+FA2-ASN Glycan in aqueous solution
+
+[ molecules ]
+; Compound        #mols
+FA2               1
+W              642
+NA               7
+CL               7
+

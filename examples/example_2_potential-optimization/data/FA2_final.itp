@@ -1,0 +1,147 @@
+;;;;;; FA2 - Final topology
+; Generated on 2026-03-21 04:08:31
+
+[ moleculetype ]
+  FA2 1
+
+[ atoms ]
+   1  SN4a  1  ASN  O  1  0.0  56.04
+   2  P3  1  ASN  CB  2  -0.16  57.05
+   3  TP5  2  1BG  C1  3  0.16  42.04
+   4  TP5  2  1BG  C3  4  0.0  30.03
+   5  TP5  2  1BG  C2  5  0.0  84.1
+   6  TP5  2  1BG  C4  6  0.0  43.05
+   7  TP5  3  2AF  C1  7  0.18  42.04
+   8  TP5  3  2AF  C2  8  -0.09  60.05
+   9  TP5  3  2AF  C4  9  0.0  45.06
+  10  TP5  4  3BG  C1  10  0.18  42.04
+  11  TP5  4  3BG  C2  11  0.0  83.09
+  12  TP5  4  3BG  C3  12  0.0  30.03
+  13  TP5  4  3BG  C4  13  0.18  44.05
+  14  TP5  5  4BM  C1  14  0.18  42.04
+  15  TP5  5  4BM  C2  15  -0.18  58.04
+  16  TP5  5  4BM  C4  16  -0.18  60.05
+  17  TP5  6  5AM  C1  17  0.18  42.04
+  18  TP5  6  5AM  C2  18  -0.18  58.04
+  19  TP5  6  5AM  C4  19  0.0  61.06
+  20  TP5  7  6BG  C1  20  0.18  42.04
+  21  TP5  7  6BG  C2  21  0.0  83.09
+  22  TP5  7  6BG  C3  22  0.0  30.03
+  23  TP5  7  6BG  C4  23  0.0  60.05
+  24  TP5  8  7AM  C1  24  0.18  42.04
+  25  TP5  8  7AM  C2  25  -0.18  58.04
+  26  TP5  8  7AM  C4  26  0.0  61.06
+  27  TP5  9  8BG  C1  27  0.18  42.04
+  28  TP5  9  8BG  C2  28  -0.09  82.08
+  29  TP5  9  8BG  C3  29  0.0  30.03
+  30  TP5  9  8BG  C4  30  -0.09  59.04
+
+[ bonds ]
+   1   2   1    0.288    1815.9   ; ; σ_ref=0.0157 σ_sim=0.0235 σ_prev=0.0560733761022043 status=CHANGED (Bayes)
+   3   4   1    0.307    2613.4   ; ; σ_ref=0.0074 σ_sim=0.0161 σ_prev=0.0397368241633471 status=CHANGED (Bayes)
+   4   6   1    0.334    1838.9   ; ; σ_ref=0.0116 σ_sim=0.0168 σ_prev=0.0422896890763724 status=CHANGED (Bayes)
+   6   3   1    0.230    4066.5   ; ; σ_ref=0.0054 σ_sim=0.0173 σ_prev=0.0376058060329453 status=CHANGED (Bayes)
+   4   5   1    0.340    2049.3   ; ; σ_ref=0.0181 σ_sim=0.0302 σ_prev=0.0508763337240669 status=CHANGED (Bayes)
+   7   8   1    0.287    3008.0   ; ; σ_ref=0.0069 σ_sim=0.0164 σ_prev=0.0432821960538691 status=CHANGED (Bayes)
+   8   9   1    0.385    2433.8   ; ; σ_ref=0.0092 σ_sim=0.0169 σ_prev=0.033134142287953 status=CHANGED (Bayes)
+   9   7   1    0.252    2611.7   ; ; σ_ref=0.0093 σ_sim=0.0184 σ_prev=0.0469204651093093 status=CHANGED (Bayes)
+  10  12   1    0.309    2801.1   ; ; σ_ref=0.0072 σ_sim=0.0168 σ_prev=0.039993132436631 status=CHANGED (Bayes)
+  12  13   1    0.403    1445.6   ; ; σ_ref=0.0140 σ_sim=0.0163 σ_prev=0.0421315899937846 status=CHANGED (Bayes)
+  13  10   1    0.250    2168.4   ; ; σ_ref=0.0115 σ_sim=0.0201 σ_prev=0.0444592712636407 status=CHANGED (Bayes)
+  11  12   1    0.338    1650.1   ; ; σ_ref=0.0220 σ_sim=0.0289 σ_prev=0.0544349718488066 status=CHANGED (Bayes)
+  14  15   1    0.255    2696.8   ; ; σ_ref=0.0097 σ_sim=0.0199 σ_prev=0.0370238572184612 status=CHANGED (Bayes)
+  15  16   1    0.356    1972.5   ; ; σ_ref=0.0120 σ_sim=0.0190 σ_prev=0.0394207370598537 status=CHANGED (Bayes)
+  16  14   1    0.249    2796.9   ; ; σ_ref=0.0066 σ_sim=0.0138 σ_prev=0.0453669070930593 status=CHANGED (Bayes)
+  17  18   1    0.268    3570.2   ; ; σ_ref=0.0051 σ_sim=0.0143 σ_prev=0.0481127119957167 status=CHANGED (Bayes)
+  18  19   1    0.366    2072.4   ; ; σ_ref=0.0106 σ_sim=0.0173 σ_prev=0.0424168723469803 status=CHANGED (Bayes)
+  19  17   1    0.254    1980.1   ; ; σ_ref=0.0119 σ_sim=0.0186 σ_prev=0.051741808848014 status=CHANGED (Bayes)
+  20  22   1    0.311    2520.6   ; ; σ_ref=0.0078 σ_sim=0.0159 σ_prev=0.0436953274281701 status=CHANGED (Bayes)
+  22  23   1    0.369    1988.8   ; ; σ_ref=0.0133 σ_sim=0.0208 σ_prev=0.0405904683270338 status=CHANGED (Bayes)
+  23  20   1    0.248    2427.7   ; ; σ_ref=0.0124 σ_sim=0.0232 σ_prev=0.0406252138359389 status=CHANGED (Bayes)
+  21  22   1    0.324    1810.8   ; ; σ_ref=0.0184 σ_sim=0.0267 σ_prev=0.0478798655117103 status=CHANGED (Bayes)
+  24  25   1    0.267    3948.6   ; ; σ_ref=0.0050 σ_sim=0.0164 σ_prev=0.0453035097891516 status=CHANGED (Bayes)
+  25  26   1    0.366    2151.0   ; ; σ_ref=0.0105 σ_sim=0.0180 σ_prev=0.0398486205230795 status=CHANGED (Bayes)
+  26  24   1    0.255    2452.5   ; ; σ_ref=0.0116 σ_sim=0.0226 σ_prev=0.0362812105989483 status=CHANGED (Bayes)
+  27  29   1    0.312    3004.4   ; ; σ_ref=0.0076 σ_sim=0.0178 σ_prev=0.0386669601909788 status=CHANGED (Bayes)
+  29  30   1    0.386    2110.3   ; ; σ_ref=0.0138 σ_sim=0.0229 σ_prev=0.0376437466467115 status=CHANGED (Bayes)
+  30  27   1    0.255    2436.8   ; ; σ_ref=0.0131 σ_sim=0.0245 σ_prev=0.0391173446226657 status=CHANGED (Bayes)
+  29  28   1    0.345    2130.2   ; ; σ_ref=0.0188 σ_sim=0.0321 σ_prev=0.046602823461596 status=CHANGED (Bayes)
+   2   3   1    0.372    2956.7   ; ; σ_ref=0.0101 σ_sim=0.0244 σ_prev=0.0338722552181193 status=CHANGED (Bayes)
+   6   7   1    0.332    2200.9   ; ; σ_ref=0.0151 σ_sim=0.0262 σ_prev=0.0404535190945924 status=CHANGED (Bayes)
+   4  10   1    0.359    1488.6   ; ; σ_ref=0.0308 σ_sim=0.0362 σ_prev=0.0469203272171674 status=CHANGED (Bayes)
+  13  14   1    0.429    1525.6   ; ; σ_ref=0.0401 σ_sim=0.0495 σ_prev=0.0464119046754005 status=CHANGED (Bayes)
+  16  17   1    0.365    2304.4   ; ; σ_ref=0.0135 σ_sim=0.0240 σ_prev=0.0513859192272926 status=CHANGED (Bayes)
+  18  20   1    0.352    1372.7   ; ; σ_ref=0.0417 σ_sim=0.0452 σ_prev=0.0528718619021674 status=CHANGED (Bayes)
+  25  27   1    0.356    1356.1   ; ; σ_ref=0.0388 σ_sim=0.0416 σ_prev=0.0533276757039043 status=CHANGED (Bayes)
+  15  24   1    0.274    2143.2   ; ; σ_ref=0.0205 σ_sim=0.0349 σ_prev=0.0364899724097197 status=CHANGED (Bayes)
+
+[ angles ]
+   1   2   3   2    132.3    36.9   ; ; σ_ref=10.9603 σ_sim=15.9799 σ_prev=20.540033110293276 status=CHANGED (Bayes)
+   3   4   6   2    41.7    64.8   ; ; σ_ref=1.5888 σ_sim=4.0606 σ_prev=8.953845771422563 status=CHANGED (Bayes)
+   4   6   3   2    62.8    50.2   ; ; σ_ref=2.1291 σ_sim=4.2338 σ_prev=11.645817960757435 status=CHANGED (Bayes)
+   6   3   4   2    75.5    39.7   ; ; σ_ref=2.9383 σ_sim=4.8645 σ_prev=12.743126072868028 status=CHANGED (Bayes)
+   6   4   5   2    122.1    55.3   ; ; σ_ref=4.0807 σ_sim=9.4069 σ_prev=20.03465021081963 status=CHANGED (Bayes)
+   7   8   9   2    40.7    52.7   ; ; σ_ref=1.8685 σ_sim=3.9543 σ_prev=9.846349946766509 status=CHANGED (Bayes)
+   8   9   7   2    48.1    51.2   ; ; σ_ref=1.7628 σ_sim=3.5687 σ_prev=10.560068030757844 status=CHANGED (Bayes)
+   9   7   8   2    91.1    53.7   ; ; σ_ref=2.7409 σ_sim=5.5652 σ_prev=12.561552102187024 status=CHANGED (Bayes)
+  10  12  13   2    38.4    33.5   ; ; σ_ref=2.8422 σ_sim=3.7836 σ_prev=7.594766076728077 status=CHANGED (Bayes)
+  12  13  10   2    50.1    45.5   ; ; σ_ref=2.3505 σ_sim=4.2367 σ_prev=12.637666201808408 status=CHANGED (Bayes)
+  13  10  12   2    91.5    32.0   ; ; σ_ref=4.5950 σ_sim=5.8752 σ_prev=14.78742390419576 status=CHANGED (Bayes)
+  13  12  11   2    115.7    48.4   ; ; σ_ref=5.3142 σ_sim=9.8397 σ_prev=20.276231229734936 status=CHANGED (Bayes)
+  14  15  16   2    44.5    45.5   ; ; σ_ref=2.2810 σ_sim=4.0770 σ_prev=10.53704142301799 status=CHANGED (Bayes)
+  15  16  14   2    45.6    68.3   ; ; σ_ref=1.6376 σ_sim=4.4610 σ_prev=11.21999531221807 status=CHANGED (Bayes)
+  16  14  15   2    89.8    61.1   ; ; σ_ref=2.8516 σ_sim=6.5056 σ_prev=14.899263615997612 status=CHANGED (Bayes)
+  17  18  19   2    43.9    44.7   ; ; σ_ref=2.6480 σ_sim=4.4787 σ_prev=10.307502642770103 status=CHANGED (Bayes)
+  18  19  17   2    46.9    49.3   ; ; σ_ref=1.7933 σ_sim=3.6731 σ_prev=11.55390983786508 status=CHANGED (Bayes)
+  19  17  18   2    89.1    44.3   ; ; σ_ref=3.4030 σ_sim=6.0855 σ_prev=12.86735031718185 status=CHANGED (Bayes)
+  20  22  23   2    41.7    40.2   ; ; σ_ref=2.7561 σ_sim=4.5149 σ_prev=9.791548607764849 status=CHANGED (Bayes)
+  22  23  20   2    56.6    60.3   ; ; σ_ref=2.2495 σ_sim=5.1701 σ_prev=10.902006964865429 status=CHANGED (Bayes)
+  23  20  22   2    81.7    43.8   ; ; σ_ref=3.8140 σ_sim=6.6360 σ_prev=14.147082102237558 status=CHANGED (Bayes)
+  20  22  21   2    87.0    54.2   ; ; σ_ref=4.4160 σ_sim=9.6570 σ_prev=15.974291138473962 status=CHANGED (Bayes)
+  24  25  26   2    44.0    47.4   ; ; σ_ref=2.5629 σ_sim=4.8639 σ_prev=8.360019037186891 status=CHANGED (Bayes)
+  25  26  24   2    46.7    55.7   ; ; σ_ref=1.8293 σ_sim=4.0583 σ_prev=10.366485274942155 status=CHANGED (Bayes)
+  26  24  25   2    89.3    42.9   ; ; σ_ref=3.4348 σ_sim=6.2394 σ_prev=12.130995034796666 status=CHANGED (Bayes)
+  27  29  30   2    41.1    42.7   ; ; σ_ref=2.8390 σ_sim=4.9302 σ_prev=8.93461903122973 status=CHANGED (Bayes)
+  29  30  27   2    53.5    51.9   ; ; σ_ref=2.2999 σ_sim=4.6200 σ_prev=10.280272606494288 status=CHANGED (Bayes)
+  30  27  29   2    85.5    42.2   ; ; σ_ref=4.0956 σ_sim=6.8248 σ_prev=13.367171935718597 status=CHANGED (Bayes)
+  27  29  28   2    89.5    57.8   ; ; σ_ref=4.4386 σ_sim=9.7402 σ_prev=17.907659694525353 status=CHANGED (Bayes)
+   2   3   4   2    117.6    44.1   ; ; σ_ref=5.8759 σ_sim=10.5976 σ_prev=18.18337492986964 status=CHANGED (Bayes)
+   3   6   7   2    106.0    38.8   ; ; σ_ref=8.3997 σ_sim=12.9376 σ_prev=16.79036637899449 status=CHANGED (Bayes)
+   6   7   8   2    98.7    51.1   ; ; σ_ref=5.3839 σ_sim=10.7510 σ_prev=17.322701487312745 status=CHANGED (Bayes)
+   6   4  10   2    65.5    27.0   ; ; σ_ref=7.6833 σ_sim=8.2122 σ_prev=12.669450757875216 status=CHANGED (Bayes)
+   3   6  10   2    120.3    24.8   ; ; σ_ref=11.2390 σ_sim=10.9589 σ_prev=12.788665313079076 status=CHANGED (Bayes)
+  13  14  15   2    89.5    35.1   ; ; σ_ref=10.5634 σ_sim=14.7975 σ_prev=18.1834607655801 status=CHANGED (Bayes)
+  13  14  16   2    147.9    19.5   ; ; σ_ref=23.5673 σ_sim=18.0065 σ_prev=14.652973364513263 status=CHANGED (Bayes)
+  16  17  18   2    123.2    49.6   ; ; σ_ref=5.6875 σ_sim=11.2918 σ_prev=12.805519433830048 status=CHANGED (Bayes)
+  16  17  19   2    131.9    41.4   ; ; σ_ref=7.1620 σ_sim=11.7007 σ_prev=13.220227627180224 status=CHANGED (Bayes)
+  17  18  20   2    104.3    22.5   ; ; σ_ref=20.4289 σ_sim=18.3810 σ_prev=17.893420235060148 status=CHANGED (Bayes)
+  19  17  20   2    112.0    19.6   ; ; σ_ref=13.0868 σ_sim=10.1946 σ_prev=11.32260561296205 status=CHANGED (Bayes)
+  14  24  26   2    131.0    43.8   ; ; σ_ref=7.2937 σ_sim=12.8120 σ_prev=15.848503808193929 status=CHANGED (Bayes)
+  15  24  25   2    115.8    43.6   ; ; σ_ref=8.1401 σ_sim=14.2365 σ_prev=12.926262794761348 status=CHANGED (Bayes)
+  25  27  30   2    127.0    51.8   ; ; σ_ref=6.3531 σ_sim=12.9178 σ_prev=15.628880321071732 status=CHANGED (Bayes)
+  25  27  29   2    124.4    40.1   ; ; σ_ref=7.9743 σ_sim=13.0560 σ_prev=17.761893161527063 status=CHANGED (Bayes)
+   2   3   7   2    98.4    38.4   ; ; σ_ref=8.2141 σ_sim=12.4247 σ_prev=18.62444816500704 status=CHANGED (Bayes)
+   7   3  10   2    73.6    23.5   ; ; σ_ref=10.4898 σ_sim=9.7753 σ_prev=13.838487927982888 status=CHANGED (Bayes)
+   3  10  14   2    149.8    51.1   ; ; σ_ref=6.7733 σ_sim=14.0397 σ_prev=15.513929923295862 status=CHANGED (Bayes)
+  10  14  17   2    90.3    25.0   ; ; σ_ref=16.2311 σ_sim=17.7537 σ_prev=11.906198657971816 status=NOT CHANGED (Bayes reject)
+  14  17  20   2    111.6    27.5   ; ; σ_ref=14.9429 σ_sim=16.8359 σ_prev=12.717611144242271 status=CHANGED (Bayes)
+  10  14  24   2    122.8    23.7   ; ; σ_ref=16.4371 σ_sim=15.5789 σ_prev=15.27405272206483 status=CHANGED (Bayes)
+  14  24  17   2    19.4    92.6   ; ; σ_ref=2.7567 σ_sim=10.1660 σ_prev=11.791716575772698 status=CHANGED (Bayes)
+
+[ dihedrals ]
+; i  j  k  l  funct angle force.k
+   6   3   4   5   2    -154.9    9.2   ; ; σ_ref=21.2169 σ_sim=7.8071 σ_prev=99.7824329551646 status=CHANGED (Bayes)
+  13  10  12  11   2    -144.8    21.2   ; ; σ_ref=8.2204 σ_sim=7.0905 σ_prev=56.26434642903237 status=CHANGED (Bayes)
+  23  20  22  21   2    -151.4    11.8   ; ; σ_ref=15.0572 σ_sim=7.1373 σ_prev=77.12081441389202 status=CHANGED (Bayes)
+  30  27  29  28   2    -154.1    27.9   ; ; σ_ref=31.2683 σ_sim=34.3320 σ_prev=69.56079333282119 status=CHANGED (Bayes)
+   4   3   5   2   2    -139.7    25.0   ; ; σ_ref=87.2168 σ_sim=88.6966 σ_prev=46.79615661133077 status=NOT CHANGED (Bayes reject)
+   9   7   8   6   2    -146.5    20.5   ; ; σ_ref=9.5409 σ_sim=7.7037 σ_prev=56.68062627891355 status=CHANGED (Bayes)
+  12  10  13   4   2    134.5    25.0   ; ; σ_ref=45.2069 σ_sim=37.3031 σ_prev=16.02263770247612 status=NOT CHANGED (Bayes reject)
+  10  12  13  14   2    63.8    25.0   ; ; σ_ref=132.2791 σ_sim=71.1809 σ_prev=15.086369439803205 status=NOT CHANGED (Bayes reject)
+  18  19  17  14   2    96.1    25.0   ; ; σ_ref=44.4538 σ_sim=35.3969 σ_prev=13.77313175652188 status=NOT CHANGED (Bayes reject)
+  19  17  18  20   2    -122.1    24.6   ; ; σ_ref=15.4237 σ_sim=15.2637 σ_prev=13.137595668105844 status=CHANGED (Bayes)
+  14  16  15  24   2    -124.5    15.4   ; ; σ_ref=18.3931 σ_sim=10.4118 σ_prev=33.54494631733079 status=CHANGED (Bayes)
+  26  24  25  27   2    -125.1    30.0   ; ; σ_ref=12.1213 σ_sim=14.3211 σ_prev=15.413639631823996 status=CHANGED (Bayes)
+
+[ exclusions ]
+ 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
