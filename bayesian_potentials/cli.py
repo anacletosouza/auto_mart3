@@ -298,7 +298,7 @@ def main():
                                 help="Skip PBC removal")
     pipeline_parser.add_argument("--skip_grompp", 
                                 action="store_true",
-                                help="Skip grompp step (only do mapping and topology)")
+                                help="If "True", pipeline generates .tpr in the output")
     pipeline_parser.add_argument("--keep_temp", 
                                 action="store_true",
                                 help="Keep temporary files")

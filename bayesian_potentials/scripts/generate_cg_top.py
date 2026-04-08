@@ -9,7 +9,7 @@ python ../2-obtaining_cg_top.py \
     --ions martini_v3.0.0_ions_v1.itp \
     --solvent martini_v3.0.0_solvents_v1.itp \
     --itp_ligand ../setup/cg.itp \
-    --name_molecule CG1 \
+    --name_molecule molecule \
     --number_molecule 2 \
     --title_comments "Topology system in Martini 3" \
     --title_system "molecule in aqueous solution" \

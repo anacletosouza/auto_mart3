@@ -43,7 +43,7 @@ usage() {
     echo "  --output_dir DIR          Output directory (default: results)"
     echo "  --remove_pbc              Remove PBC (default)"
     echo "  --no_pbc                  Skip PBC removal"
-    echo "  --skip_grompp             Skip grompp step"
+    echo "  --skip_grompp             Skip grompp step to generate CG.tpr (if True)"
     echo "  --keep_temp               Keep temporary files"
     echo "  --verbose                 Verbose output"
     exit 1
