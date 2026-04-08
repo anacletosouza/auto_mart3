@@ -23,6 +23,8 @@ setup(
         "bayesian_potentials": [
             "bin/*.sh",
             "scripts/*.py",
+            "data/*",
+            "examples/*",
         ],
     },
     install_requires=requirements,
