@@ -18,8 +18,8 @@ Maps an atomistic trajectory to coarse-grained coordinates.
 ```bash
 bayesian-potentials map \
                         --index_cg       ../ndx/cg.ndx   \
-                        --aa_tpr         ../setup/md.tpr \
-                        --aa_xtc         ../setup/md.xtc \
+                        --aa_tpr         ../aa_md_data/md.tpr \
+                        --aa_xtc         ../aa_md_data/md.xtc \
                         --output_mapped  mapped.xtc      \
                         --output_cg_gro  cg.gro          \
                         --remove_pbc                     \
@@ -49,11 +49,11 @@ bayesian-potentials gen-top \
 ```bash
 bayesian-potentials pipeline \
                              --cg_ndx             ../ndx/cg.ndx \
-                             --aa_tpr             ../setup/md.tpr \
-                             --aa_xtc             ../setup/md.xtc \
+                             --aa_tpr             ../aa_md_data/md.tpr \
+                             --aa_xtc             ../aa_md_data/md.xtc \
                              --output_mapped      mapped.xtc \
                              --output_cg_gro      cg.gro \
-                             --aa_itp             ../setup/carb.itp \
+                             --aa_itp             ../aa_md_data/carb.itp \
                              --output_cg_itp      cg.itp \
                              --input_mdp          ../mdp/minimization.mdp \
                              --output_dir         ../results/ \
