@@ -1,0 +1,127 @@
+=== Bead Connectivity Report ===
+
+Connections:
+bead_1(BB) ----- bead_2(SC1)
+bead_10(BG1) ----- bead_12(BG3)
+bead_10(BG1) ----- bead_13(BG4)
+bead_11(BG2) ----- bead_12(BG3)
+bead_12(BG3) ----- bead_13(BG4)
+bead_12(BG3) ----- bead_14(BM1)
+bead_14(BM1) ----- bead_15(BM2)
+bead_14(BM1) ----- bead_16(BM3)
+bead_15(BM2) ----- bead_16(BM3)
+bead_15(BM2) ----- bead_24(AM1)
+bead_16(BM3) ----- bead_17(AM1)
+bead_17(AM1) ----- bead_18(AM2)
+bead_17(AM1) ----- bead_19(AM3)
+bead_18(AM2) ----- bead_19(AM3)
+bead_18(AM2) ----- bead_20(BG1)
+bead_2(SC1) ----- bead_3(BG1)
+bead_20(BG1) ----- bead_22(BG3)
+bead_20(BG1) ----- bead_23(BG4)
+bead_21(BG2) ----- bead_22(BG3)
+bead_22(BG3) ----- bead_23(BG4)
+bead_24(AM1) ----- bead_25(AM2)
+bead_24(AM1) ----- bead_26(AM3)
+bead_25(AM2) ----- bead_26(AM3)
+bead_25(AM2) ----- bead_27(BG1)
+bead_27(BG1) ----- bead_29(BG3)
+bead_27(BG1) ----- bead_30(BG4)
+bead_28(BG2) ----- bead_29(BG3)
+bead_29(BG3) ----- bead_30(BG4)
+bead_3(BG1) ----- bead_5(BG3)
+bead_3(BG1) ----- bead_6(BG4)
+bead_4(BG2) ----- bead_5(BG3)
+bead_5(BG3) ----- bead_10(BG1)
+bead_5(BG3) ----- bead_6(BG4)
+bead_6(BG4) ----- bead_7(AF1)
+bead_7(AF1) ----- bead_8(AF2)
+bead_7(AF1) ----- bead_9(AF3)
+bead_8(AF2) ----- bead_9(AF3)
+
+=== Statistics ===
+
+Total unique bead connections: 37
+Internal bonds (within residue): 29
+External bonds (between residues): 8
+Total AA bonds contributing: 43
+
+Detailed counts per connection:
+bead_1(BB) - bead_2(SC1): 1 AA bonds
+bead_10(BG1) - bead_12(BG3): 1 AA bonds
+bead_10(BG1) - bead_13(BG4): 2 AA bonds
+bead_11(BG2) - bead_12(BG3): 1 AA bonds
+bead_12(BG3) - bead_13(BG4): 1 AA bonds
+bead_12(BG3) - bead_14(BM1): 1 AA bonds
+bead_14(BM1) - bead_15(BM2): 1 AA bonds
+bead_14(BM1) - bead_16(BM3): 2 AA bonds
+bead_15(BM2) - bead_16(BM3): 1 AA bonds
+bead_15(BM2) - bead_24(AM1): 1 AA bonds
+bead_16(BM3) - bead_17(AM1): 1 AA bonds
+bead_17(AM1) - bead_18(AM2): 1 AA bonds
+bead_17(AM1) - bead_19(AM3): 2 AA bonds
+bead_18(AM2) - bead_19(AM3): 1 AA bonds
+bead_18(AM2) - bead_20(BG1): 1 AA bonds
+bead_2(SC1) - bead_3(BG1): 1 AA bonds
+bead_20(BG1) - bead_22(BG3): 1 AA bonds
+bead_20(BG1) - bead_23(BG4): 2 AA bonds
+bead_21(BG2) - bead_22(BG3): 1 AA bonds
+bead_22(BG3) - bead_23(BG4): 1 AA bonds
+bead_24(AM1) - bead_25(AM2): 1 AA bonds
+bead_24(AM1) - bead_26(AM3): 2 AA bonds
+bead_25(AM2) - bead_26(AM3): 1 AA bonds
+bead_25(AM2) - bead_27(BG1): 1 AA bonds
+bead_27(BG1) - bead_29(BG3): 1 AA bonds
+bead_27(BG1) - bead_30(BG4): 2 AA bonds
+bead_28(BG2) - bead_29(BG3): 1 AA bonds
+bead_29(BG3) - bead_30(BG4): 1 AA bonds
+bead_3(BG1) - bead_5(BG3): 1 AA bonds
+bead_3(BG1) - bead_6(BG4): 2 AA bonds
+bead_4(BG2) - bead_5(BG3): 1 AA bonds
+bead_5(BG3) - bead_10(BG1): 1 AA bonds
+bead_5(BG3) - bead_6(BG4): 1 AA bonds
+bead_6(BG4) - bead_7(AF1): 1 AA bonds
+bead_7(AF1) - bead_8(AF2): 1 AA bonds
+bead_7(AF1) - bead_9(AF3): 2 AA bonds
+bead_8(AF2) - bead_9(AF3): 1 AA bonds
+
+=== Internal Connections ===
+bead_3(BG1) - bead_5(BG3)
+bead_14(BM1) - bead_15(BM2)
+bead_10(BG1) - bead_12(BG3)
+bead_7(AF1) - bead_9(AF3)
+bead_15(BM2) - bead_16(BM3)
+bead_11(BG2) - bead_12(BG3)
+bead_29(BG3) - bead_30(BG4)
+bead_4(BG2) - bead_5(BG3)
+bead_24(AM1) - bead_25(AM2)
+bead_12(BG3) - bead_13(BG4)
+bead_21(BG2) - bead_22(BG3)
+bead_24(AM1) - bead_26(AM3)
+bead_7(AF1) - bead_8(AF2)
+bead_27(BG1) - bead_29(BG3)
+bead_8(AF2) - bead_9(AF3)
+bead_28(BG2) - bead_29(BG3)
+bead_17(AM1) - bead_19(AM3)
+bead_20(BG1) - bead_23(BG4)
+bead_3(BG1) - bead_6(BG4)
+bead_5(BG3) - bead_6(BG4)
+bead_17(AM1) - bead_18(AM2)
+bead_1(BB) - bead_2(SC1)
+bead_14(BM1) - bead_16(BM3)
+bead_20(BG1) - bead_22(BG3)
+bead_27(BG1) - bead_30(BG4)
+bead_22(BG3) - bead_23(BG4)
+bead_10(BG1) - bead_13(BG4)
+bead_25(AM2) - bead_26(AM3)
+bead_18(AM2) - bead_19(AM3)
+
+=== External Connections ===
+bead_12(BG3) - bead_14(BM1)
+bead_6(BG4) - bead_7(AF1)
+bead_18(AM2) - bead_20(BG1)
+bead_2(SC1) - bead_3(BG1)
+bead_16(BM3) - bead_17(AM1)
+bead_15(BM2) - bead_24(AM1)
+bead_5(BG3) - bead_10(BG1)
+bead_25(AM2) - bead_27(BG1)

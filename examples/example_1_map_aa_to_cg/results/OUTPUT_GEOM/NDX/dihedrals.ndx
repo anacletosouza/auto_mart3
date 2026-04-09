@@ -1,0 +1,48 @@
+[ dihedrals ]
+;;;; internal dihedrals (same residues)
+
+   6    3    5    4     ; 2_C4--2_C1--2_C3--2_C2  angle = 154.9 degree
+   4    5    6    3     ; 2_C2--2_C3--2_C4--2_C1  angle = -30.6 degree
+  13   10   12   11     ; 4_C4--4_C1--4_C3--4_C2  angle = 146.4 degree
+  11   12   13   10     ; 4_C2--4_C3--4_C4--4_C1  angle = -38.7 degree
+  23   20   22   21     ; 7_C4--7_C1--7_C3--7_C2  angle = 154.3 degree
+  21   22   23   20     ; 7_C2--7_C3--7_C4--7_C1  angle = -31.0 degree
+  30   27   29   28     ; 9_C4--9_C1--9_C3--9_C2  angle = 152.6 degree
+  28   29   30   27     ; 9_C2--9_C3--9_C4--9_C1  angle = -33.2 degree
+
+;;;; external dihedrals (between residues linked)
+
+   1    2    3    5     ; 1_C--1_CB--2_C1--2_C3  angle = -152.1 degree
+   1    2    3    6     ; 1_C--1_CB--2_C1--2_C4  angle = 97.6 degree
+   3    6    7    9     ; 2_C1--2_C4--3_C1--3_C4  angle = 25.1 degree
+   3    6    7    8     ; 2_C1--2_C4--3_C1--3_C3  angle = 129.9 degree
+   5    6    7    9     ; 2_C3--2_C4--3_C1--3_C4  angle = -28.5 degree
+   5    6    7    8     ; 2_C3--2_C4--3_C1--3_C3  angle = 76.3 degree
+   3    5   10   12     ; 2_C1--2_C3--4_C1--4_C3  angle = -23.8 degree
+   3    5   10   13     ; 2_C1--2_C3--4_C1--4_C4  angle = -160.7 degree
+   4    5   10   12     ; 2_C2--2_C3--4_C1--4_C3  angle = -155.9 degree
+   4    5   10   13     ; 2_C2--2_C3--4_C1--4_C4  angle = 67.2 degree
+   6    5   10   12     ; 2_C4--2_C3--4_C1--4_C3  angle = -25.8 degree
+   6    5   10   13     ; 2_C4--2_C3--4_C1--4_C4  angle = -162.7 degree
+  10   12   14   15     ; 4_C1--4_C3--5_C1--5_C3  angle = -41.6 degree
+  10   12   14   16     ; 4_C1--4_C3--5_C1--5_C4  angle = -165.8 degree
+  11   12   14   15     ; 4_C2--4_C3--5_C1--5_C3  angle = -155.6 degree
+  11   12   14   16     ; 4_C2--4_C3--5_C1--5_C4  angle = 80.2 degree
+  13   12   14   15     ; 4_C4--4_C3--5_C1--5_C3  angle = -41.4 degree
+  13   12   14   16     ; 4_C4--4_C3--5_C1--5_C4  angle = -165.6 degree
+  14   16   17   19     ; 5_C1--5_C4--6_C1--6_C4  angle = 73.5 degree
+  14   16   17   18     ; 5_C1--5_C4--6_C1--6_C3  angle = -50.7 degree
+  15   16   17   19     ; 5_C3--5_C4--6_C1--6_C4  angle = 39.2 degree
+  15   16   17   18     ; 5_C3--5_C4--6_C1--6_C3  angle = -85.0 degree
+  14   15   24   25     ; 5_C1--5_C3--8_C1--8_C3  angle = 125.2 degree
+  14   15   24   26     ; 5_C1--5_C3--8_C1--8_C4  angle = -128.9 degree
+  16   15   24   25     ; 5_C4--5_C3--8_C1--8_C3  angle = 70.4 degree
+  16   15   24   26     ; 5_C4--5_C3--8_C1--8_C4  angle = 176.3 degree
+  17   18   20   23     ; 6_C1--6_C3--7_C1--7_C4  angle = -163.2 degree
+  17   18   20   22     ; 6_C1--6_C3--7_C1--7_C3  angle = -40.8 degree
+  19   18   20   23     ; 6_C4--6_C3--7_C1--7_C4  angle = -130.1 degree
+  19   18   20   22     ; 6_C4--6_C3--7_C1--7_C3  angle = -7.6 degree
+  24   25   27   29     ; 8_C1--8_C3--9_C1--9_C3  angle = -75.8 degree
+  24   25   27   30     ; 8_C1--8_C3--9_C1--9_C4  angle = 173.5 degree
+  26   25   27   29     ; 8_C4--8_C3--9_C1--9_C3  angle = -44.9 degree
+  26   25   27   30     ; 8_C4--8_C3--9_C1--9_C4  angle = -155.5 degree

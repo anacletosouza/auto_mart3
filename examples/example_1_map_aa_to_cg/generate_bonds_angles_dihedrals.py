@@ -3,6 +3,8 @@
 """
 Calculate bonds, angles, and dihedrals from molecular dynamics trajectories.
 
+It is necessary that the number of elements in xtc have the same number of elements in tpr.
+
 Usage:
     python3 generate_bonds_angles_dihedrals.py \\
         --bonds_ndx      bonds.ndx          \\
