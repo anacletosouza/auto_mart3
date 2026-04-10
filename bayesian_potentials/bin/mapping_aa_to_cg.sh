@@ -258,7 +258,8 @@ CG_MARTINI_CMD="cg-martini3 \
     --output_dir CG_MARTINI3_TEMP \
     --beads_position $BEADS_POSITION \
     --aa_itp $AA_ITP_ABS \
-    --force_application \"$FORCE_APPLICATION\""
+    --force_application \"$FORCE_APPLICATION\" \
+    --name_molecule $NAME_MOLECULE"
 
 if [ "$VERBOSE" = "true" ]; then
     CG_MARTINI_CMD="$CG_MARTINI_CMD --verbose"
@@ -334,18 +335,15 @@ echo "  ✓ Generated: GMX/mapped.xtc"
 echo "  ✓ Generated: GMX/cg.gro"
 
 # -----------------------
-# Step 2: Copy and fix CG ITP
+# Step 2: Copy CG ITP
 # -----------------------
 echo ""
-echo "Step 2/4: Copying and fixing CG ITP"
+echo "Step 2/4: Copying CG ITP"
 
 # Copy ITP from CG_MARTINI3 to GMX
 if [ -f "$CG_ITP_SRC" ]; then
     cp "$CG_ITP_SRC" GMX/cg.itp
-    # Fix the molecule name in the ITP file
-    sed -i "s/^MOL/$NAME_MOLECULE/g" GMX/cg.itp
-    sed -i "s/ moleculetype / moleculetype /g" GMX/cg.itp
-    echo "  ✓ Copied and fixed: GMX/cg.itp (molecule name: $NAME_MOLECULE)"
+    echo "  ✓ Copied: GMX/cg.itp (molecule name: $NAME_MOLECULE)"
 else
     echo "Warning: ITP file not found at $CG_ITP_SRC"
 fi
