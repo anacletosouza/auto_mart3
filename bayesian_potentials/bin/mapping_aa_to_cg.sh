@@ -334,15 +334,18 @@ echo "  ✓ Generated: GMX/mapped.xtc"
 echo "  ✓ Generated: GMX/cg.gro"
 
 # -----------------------
-# Step 2: Copy CG ITP
+# Step 2: Copy and fix CG ITP
 # -----------------------
 echo ""
-echo "Step 2/4: Copying CG ITP"
+echo "Step 2/4: Copying and fixing CG ITP"
 
 # Copy ITP from CG_MARTINI3 to GMX
 if [ -f "$CG_ITP_SRC" ]; then
     cp "$CG_ITP_SRC" GMX/cg.itp
-    echo "  ✓ Copied: GMX/cg.itp"
+    # Fix the molecule name in the ITP file
+    sed -i "s/^MOL/$NAME_MOLECULE/g" GMX/cg.itp
+    sed -i "s/ moleculetype / moleculetype /g" GMX/cg.itp
+    echo "  ✓ Copied and fixed: GMX/cg.itp (molecule name: $NAME_MOLECULE)"
 else
     echo "Warning: ITP file not found at $CG_ITP_SRC"
 fi
@@ -431,7 +434,7 @@ if [ "$SKIP_GROMPP" != "true" ]; then
     check_error "grompp"
     echo "  ✓ Generated: $O_FILE"
     
-    # Copy TPR back to GMX directory
+    # Copy TPR and topology back to GMX directory
     cp "$O_FILE" ../GMX/
     cp "$OUTPUT_TOPOL" ../GMX/
     
