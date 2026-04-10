@@ -12,12 +12,12 @@
 
 ;;;; external dihedrals (between residues linked)
 
-   1    2    3    6     ; 1_C--1_CB--2_C1--2_C4  angle = 93.1 degree
    1    2    3    5     ; 1_C--1_CB--2_C1--2_C3  angle = -155.4 degree
-   3    6    7    8     ; 2_C1--2_C4--3_C1--3_C3  angle = 131.6 degree
+   1    2    3    6     ; 1_C--1_CB--2_C1--2_C4  angle = 93.1 degree
    3    6    7    9     ; 2_C1--2_C4--3_C1--3_C4  angle = 74.2 degree
-   5    6    7    8     ; 2_C3--2_C4--3_C1--3_C3  angle = 82.9 degree
+   3    6    7    8     ; 2_C1--2_C4--3_C1--3_C3  angle = 131.6 degree
    5    6    7    9     ; 2_C3--2_C4--3_C1--3_C4  angle = 25.6 degree
+   5    6    7    8     ; 2_C3--2_C4--3_C1--3_C3  angle = 82.9 degree
    3    6   10   13     ; 2_C1--2_C4--4_C1--4_C4  angle = -102.2 degree
    5    6   10   13     ; 2_C3--2_C4--4_C1--4_C4  angle = -98.6 degree
    3    6   10   12     ; 2_C1--2_C4--4_C1--4_C3  angle = -179.4 degree
@@ -30,10 +30,10 @@
   14   16   17   18     ; 5_C1--5_C4--6_C1--6_C3  angle = -71.0 degree
   15   16   17   19     ; 5_C3--5_C4--6_C1--6_C4  angle = 8.2 degree
   15   16   17   18     ; 5_C3--5_C4--6_C1--6_C3  angle = -105.5 degree
-  14   15   24   25     ; 5_C1--5_C3--8_C1--8_C3  angle = 134.6 degree
   14   15   24   26     ; 5_C1--5_C3--8_C1--8_C4  angle = -126.2 degree
-  16   15   24   25     ; 5_C4--5_C3--8_C1--8_C3  angle = 88.0 degree
+  14   15   24   25     ; 5_C1--5_C3--8_C1--8_C3  angle = 134.6 degree
   16   15   24   26     ; 5_C4--5_C3--8_C1--8_C4  angle = -172.8 degree
+  16   15   24   25     ; 5_C4--5_C3--8_C1--8_C3  angle = 88.0 degree
   17   18   20   22     ; 6_C1--6_C3--7_C1--7_C3  angle = -37.8 degree
   17   18   20   23     ; 6_C1--6_C3--7_C1--7_C4  angle = 165.5 degree
   19   18   20   22     ; 6_C4--6_C3--7_C1--7_C3  angle = -12.7 degree
