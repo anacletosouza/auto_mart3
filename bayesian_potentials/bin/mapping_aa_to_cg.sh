@@ -444,7 +444,6 @@ else
     echo "Step 3/4: Skipping grompp (--skip_grompp)"
 fi
 
-# -----------------------
 # Step 4: Analyze bonds, angles, dihedrals
 if [ "$SKIP_ANALYSIS" != "true" ]; then
     
@@ -452,7 +451,6 @@ if [ "$SKIP_ANALYSIS" != "true" ]; then
     echo "Step 4/4: Analyzing bonds, angles, and dihedrals"
     
     # Ensure NDX files are in the correct location
-    # The analysis script expects NDX files in the NDX/ directory
     if [ -d "CG_MARTINI3/NDX" ]; then
         echo "  Copying NDX files from CG_MARTINI3/NDX to NDX/..."
         mkdir -p NDX
@@ -460,36 +458,10 @@ if [ "$SKIP_ANALYSIS" != "true" ]; then
         cp CG_MARTINI3/NDX/*.map NDX/ 2>/dev/null
     fi
     
-    # Check if index files exist in NDX directory
+    # Check if index files exist
     BONDS_NDX="NDX/bonds.ndx"
     ANGLES_NDX="NDX/angles.ndx"
     DIHEDRALS_NDX="NDX/dihedrals.ndx"
-    
-    # Verify the files exist
-    if [ ! -f "$BONDS_NDX" ]; then
-        echo "Warning: Bonds index file not found: $BONDS_NDX"
-        echo "Looking in alternative locations..."
-        if [ -f "CG_MARTINI3/NDX/bonds.ndx" ]; then
-            echo "  Found in CG_MARTINI3/NDX/bonds.ndx, copying..."
-            mkdir -p NDX
-            cp CG_MARTINI3/NDX/bonds.ndx NDX/
-            cp CG_MARTINI3/NDX/angles.ndx NDX/ 2>/dev/null
-            cp CG_MARTINI3/NDX/dihedrals.ndx NDX/ 2>/dev/null
-        fi
-    fi
-    
-    # Check again after copying
-    if [ ! -f "$BONDS_NDX" ]; then
-        echo "Error: Bonds index file still not found. Skipping bonds analysis"
-    fi
-    
-    if [ ! -f "$ANGLES_NDX" ]; then
-        echo "Error: Angles index file still not found. Skipping angles analysis"
-    fi
-    
-    if [ ! -f "$DIHEDRALS_NDX" ]; then
-        echo "Error: Dihedrals index file still not found. Skipping dihedrals analysis"
-    fi
     
     # Determine which trajectory to use for analysis
     if [ "$ANALYZE_REMOVE_PBC" = "true" ]; then
@@ -507,13 +479,6 @@ if [ "$SKIP_ANALYSIS" != "true" ]; then
     
     # Run analysis if all required files exist
     if [ -f "$ANALYZE_TPR" ] && [ -f "$BONDS_NDX" ] && [ -f "$ANGLES_NDX" ] && [ -f "$DIHEDRALS_NDX" ]; then
-        echo "  Running analysis with:"
-        echo "    - Bonds NDX: $BONDS_NDX"
-        echo "    - Angles NDX: $ANGLES_NDX"
-        echo "    - Dihedrals NDX: $DIHEDRALS_NDX"
-        echo "    - XTC file: $ANALYZE_XTC"
-        echo "    - TPR file: $ANALYZE_TPR"
-        
         # Try to use the module for analysis
         if python -c "import bayesian_potentials.scripts.generate_bonds_angles_dihedrals" 2>/dev/null; then
             ANALYZE_CMD="python -m bayesian_potentials.scripts.generate_bonds_angles_dihedrals"
@@ -547,67 +512,72 @@ if [ "$SKIP_ANALYSIS" != "true" ]; then
             if [ $? -eq 0 ]; then
                 echo "  ✓ Analysis completed successfully"
                 
-                # Move XVG files to XVG directory if they exist
-                echo "  Moving XVG files to XVG directory..."
-                mkdir -p XVG
+                # Create subdirectories in XVG/
+                echo "  Organizing XVG files into subdirectories..."
+                mkdir -p XVG/bonds XVG/angles XVG/dihedrals
                 
                 # Move bond XVG files
                 if [ -d "bonds" ]; then
+                    echo "    Moving bond files to XVG/bonds/"
                     for file in bonds/*.xvg; do
                         if [ -f "$file" ]; then
-                            mv "$file" XVG/ 2>/dev/null
-                            echo "    Moved: $file"
+                            mv "$file" XVG/bonds/ 2>/dev/null
                         fi
                     done
                     for file in bonds/distr_*.xvg; do
                         if [ -f "$file" ]; then
-                            mv "$file" XVG/ 2>/dev/null
-                            echo "    Moved: $file"
+                            mv "$file" XVG/bonds/ 2>/dev/null
                         fi
                     done
-                    cp bonds/*.txt XVG/ 2>/dev/null
+                    # Copy text files
+                    cp bonds/*.txt XVG/bonds/ 2>/dev/null
                     rm -rf bonds
                 fi
                 
                 # Move angle XVG files
                 if [ -d "angles" ]; then
+                    echo "    Moving angle files to XVG/angles/"
                     for file in angles/*.xvg; do
                         if [ -f "$file" ]; then
-                            mv "$file" XVG/ 2>/dev/null
-                            echo "    Moved: $file"
+                            mv "$file" XVG/angles/ 2>/dev/null
                         fi
                     done
                     for file in angles/distr_*.xvg; do
                         if [ -f "$file" ]; then
-                            mv "$file" XVG/ 2>/dev/null
-                            echo "    Moved: $file"
+                            mv "$file" XVG/angles/ 2>/dev/null
                         fi
                     done
-                    cp angles/*.txt XVG/ 2>/dev/null
+                    # Copy text files
+                    cp angles/*.txt XVG/angles/ 2>/dev/null
                     rm -rf angles
                 fi
                 
                 # Move dihedral XVG files
                 if [ -d "dihedrals" ]; then
+                    echo "    Moving dihedral files to XVG/dihedrals/"
                     for file in dihedrals/*.xvg; do
                         if [ -f "$file" ]; then
-                            mv "$file" XVG/ 2>/dev/null
-                            echo "    Moved: $file"
+                            mv "$file" XVG/dihedrals/ 2>/dev/null
                         fi
                     done
                     for file in dihedrals/distr_*.xvg; do
                         if [ -f "$file" ]; then
-                            mv "$file" XVG/ 2>/dev/null
-                            echo "    Moved: $file"
+                            mv "$file" XVG/dihedrals/ 2>/dev/null
                         fi
                     done
-                    cp dihedrals/*.txt XVG/ 2>/dev/null
+                    # Copy text files
+                    cp dihedrals/*.txt XVG/dihedrals/ 2>/dev/null
                     rm -rf dihedrals
                 fi
                 
-                # Count XVG files
-                XVG_COUNT=$(ls -1 XVG/*.xvg 2>/dev/null | wc -l)
-                echo "    • Total XVG files generated: $XVG_COUNT"
+                # Count files in each subdirectory
+                BOND_COUNT=$(ls -1 XVG/bonds/*.xvg 2>/dev/null | wc -l)
+                ANGLE_COUNT=$(ls -1 XVG/angles/*.xvg 2>/dev/null | wc -l)
+                DIH_COUNT=$(ls -1 XVG/dihedrals/*.xvg 2>/dev/null | wc -l)
+                
+                echo "    ✓ Bond files: $BOND_COUNT"
+                echo "    ✓ Angle files: $ANGLE_COUNT"
+                echo "    ✓ Dihedral files: $DIH_COUNT"
             else
                 echo "  ✗ Analysis failed with error code $?"
             fi
@@ -620,14 +590,6 @@ if [ "$SKIP_ANALYSIS" != "true" ]; then
         [ ! -f "$BONDS_NDX" ] && echo "  - $BONDS_NDX"
         [ ! -f "$ANGLES_NDX" ] && echo "  - $ANGLES_NDX"
         [ ! -f "$DIHEDRALS_NDX" ] && echo "  - $DIHEDRALS_NDX"
-        
-        # List what we actually have
-        echo ""
-        echo "Files found in NDX/ directory:"
-        ls -la NDX/ 2>/dev/null || echo "  NDX/ directory not found"
-        echo ""
-        echo "Files found in CG_MARTINI3/NDX/ directory:"
-        ls -la CG_MARTINI3/NDX/ 2>/dev/null || echo "  CG_MARTINI3/NDX/ directory not found"
     fi
     
 else

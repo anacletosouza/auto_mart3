@@ -1,0 +1,47 @@
+==========================================
+CG Mapping Pipeline Summary
+==========================================
+
+Input files:
+  AA TPR:           /home/anacleto/projects/github/bayesian_potentials/examples/example_1_map_aa_to_cg/aa_md_data/md.tpr
+  AA XTC:           /home/anacleto/projects/github/bayesian_potentials/examples/example_1_map_aa_to_cg/aa_md_data/md.xtc
+  AA GRO:           /home/anacleto/projects/github/bayesian_potentials/examples/example_1_map_aa_to_cg/aa_md_data/carb.gro
+  AA ITP:           /home/anacleto/projects/github/bayesian_potentials/examples/example_1_map_aa_to_cg/aa_md_data/carb.itp
+  Beads JSON:       /home/anacleto/projects/github/bayesian_potentials/examples/example_1_map_aa_to_cg/json/beads_config.json
+  Force application:random=[1250,30;30,4]
+  Beads position:   com
+  Input MDP:        /home/anacleto/projects/github/bayesian_potentials/examples/example_1_map_aa_to_cg/mdp/minimization.mdp
+  FF directory:     /home/anacleto/projects/github/bayesian_potentials/examples/example_1_map_aa_to_cg/ff_files/
+
+Output files:
+  Main directory:   /home/anacleto/projects/github/bayesian_potentials/examples/example_1_map_aa_to_cg
+  
+GMX files (GMX/):
+  - mapped.xtc      Mapped CG trajectory
+  - cg.gro          CG coordinates
+  - cg.itp          CG topology
+  - topol_cg.top    GROMACS topology
+  - CG.tpr          GROMACS TPR file
+
+CG-MARTINI3 files (CG_MARTINI3/):
+  - GRO/            CG structure files
+  - ITP/            CG topology files
+  - JSON/           Beads definition files
+  - NDX/            Index files
+
+XVG files (XVG/):
+  - bond_*.xvg      Bond distance time series
+  - distr_bond_*.xvg Bond distance distributions
+  - ang_*.xvg       Angle time series
+  - distr_ang_*.xvg Angle distributions
+  - dih_*.xvg       Dihedral time series
+  - distr_dih_*.xvg Dihedral distributions
+
+NDX files (NDX/):
+  - cg.ndx          CG bead mapping
+  - bonds.ndx       Bond definitions
+  - angles.ndx      Angle definitions
+  - dihedrals.ndx   Dihedral definitions
+  - cg.map          Atom to bead mapping
+
+==========================================
