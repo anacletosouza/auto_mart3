@@ -18,6 +18,10 @@ def get_scripts_dir():
     """Get the scripts directory inside the package."""
     return get_package_dir() / "scripts"
 
+def get_bin_dir():
+    """Get the bin directory inside the package."""
+    return get_package_dir() / "bin"
+
 def get_data_dir():
     """Get the data directory (relative to package or installed)."""
     pkg_dir = get_package_dir()
@@ -157,7 +161,7 @@ def run_analysis_script(args):
 
 def run_shell_script(args):
     """Run the main shell pipeline script."""
-    script_path = get_package_dir() / "bin" / "mapping_aa_to_cg.sh"
+    script_path = get_bin_dir() / "mapping_aa_to_cg.sh"
     
     if not script_path.exists():
         print(f"Error: Shell script not found at {script_path}")
@@ -272,155 +276,46 @@ def main():
     # Full pipeline command
     pipeline_parser = subparsers.add_parser("pipeline", help="Run full pipeline")
     
-    # Required arguments
-    pipeline_parser.add_argument("--cg_ndx", required=True,
-                                help="CG index file (used for both mapping and ITP generation)")
-    pipeline_parser.add_argument("--aa_tpr", required=True,
-                                help="AA TPR file")
-    pipeline_parser.add_argument("--aa_xtc", required=True,
-                                help="AA trajectory XTC file")
-    pipeline_parser.add_argument("--output_mapped", required=True,
-                                help="Output mapped trajectory")
-    pipeline_parser.add_argument("--output_cg_gro", required=True,
-                                help="Output CG GRO file")
-    pipeline_parser.add_argument("--aa_itp", required=True,
-                                help="AA ITP file")
-    pipeline_parser.add_argument("--output_cg_itp", required=True,
-                                help="Output CG ITP file")
+    # Essential arguments (required)
+    essential_group = pipeline_parser.add_argument_group("Essential arguments")
+    essential_group.add_argument("--aa_tpr", required=True, help="AA TPR file")
+    essential_group.add_argument("--aa_xtc", required=True, help="AA trajectory XTC file")
+    essential_group.add_argument("--aa_gro", required=True, help="AA GRO file")
+    essential_group.add_argument("--aa_itp", required=True, help="AA ITP file")
+    essential_group.add_argument("--beads_json", required=True, help="Beads definition JSON file")
+    essential_group.add_argument("--force_application", required=True, help="Force application (e.g., 'random=[1250,30;30,4]')")
+    essential_group.add_argument("--beads_position", required=True, choices=["com", "geom"], help="Beads position ('com' or 'geom')")
+    essential_group.add_argument("--input_mdp", required=True, help="MDP file for grompp")
+    essential_group.add_argument("--path_ff", required=True, help="Force field directory")
     
     # Optional arguments with defaults
-    pipeline_parser.add_argument("--python_scripts_dir", 
-                                default=None,
-                                help="Path to scripts directory (auto-detected if not provided)")
-    pipeline_parser.add_argument("--input_mdp", 
-                                default=None,
-                                help="MDP file for grompp (uses default from package if not provided)")
-    
-    # Topology generation options
-    pipeline_parser.add_argument("--path_ff", 
-                                type=str,
-                                default=None,
-                                help="Directory containing force field ITP files (auto-detects if not provided)")
-    pipeline_parser.add_argument("--ff", 
-                                type=str, 
-                                default="martini_v3.0.0.itp",
-                                help="Force field ITP filename (default: martini_v3.0.0.itp)")
-    pipeline_parser.add_argument("--ions", 
-                                type=str, 
-                                default="martini_v3.0.0_ions_v1.itp",
-                                help="Ions ITP filename (default: martini_v3.0.0_ions_v1.itp)")
-    pipeline_parser.add_argument("--solvent", 
-                                type=str, 
-                                default="martini_v3.0.0_solvents_v1.itp",
-                                help="Solvent ITP filename (default: martini_v3.0.0_solvents_v1.itp)")
-    pipeline_parser.add_argument("--name_molecule", 
-                                type=str, 
-                                default="molecule",
-                                help="Molecule name for the ligand (default: molecule)")
-    pipeline_parser.add_argument("--number_molecule", 
-                                type=int, 
-                                default=1,
-                                help="Number of molecules for the ligand (default: 1)")
-    pipeline_parser.add_argument("--title_comments", 
-                                default="Topology system in Martini 3",
-                                help="Topology comments")
-    pipeline_parser.add_argument("--title_system", 
-                                default="molecule in aqueous solution",
-                                help="System title")
-    pipeline_parser.add_argument("--output_topol", 
-                                default="topol_cg.top",
-                                help="Output topology filename (default: topol_cg.top)")
-    pipeline_parser.add_argument("--default_martini", 
-                                action="store_true",
-                                help="Use default Martini 3 masses (72) and zero charges")
-    
-    # Analysis options for pipeline
-    pipeline_parser.add_argument("--skip_analysis", 
-                                action="store_true",
-                                help="Skip bonds/angles/dihedrals analysis")
-    pipeline_parser.add_argument("--bonds_ndx", 
-                                default="OUTPUT/NDX/bonds.ndx",
-                                help="Bonds index file (default: OUTPUT/NDX/bonds.ndx)")
-    pipeline_parser.add_argument("--angles_ndx", 
-                                default="OUTPUT/NDX/angles.ndx",
-                                help="Angles index file (default: OUTPUT/NDX/angles.ndx)")
-    pipeline_parser.add_argument("--dihedrals_ndx", 
-                                default="OUTPUT/NDX/dihedrals.ndx",
-                                help="Dihedrals index file (default: OUTPUT/NDX/dihedrals.ndx)")
-    pipeline_parser.add_argument("--analyze_remove_pbc", 
-                                action="store_true",
-                                help="Remove PBC and align trajectory before analysis")
-    pipeline_parser.add_argument("--analyze_group_1", 
-                                default="System",
-                                help="Group for fitting in analysis (default: System)")
-    pipeline_parser.add_argument("--analyze_group_2", 
-                                default="System",
-                                help="Group for output in analysis (default: System)")
-    pipeline_parser.add_argument("--keep_intermediate", 
-                                action="store_true",
-                                help="Keep intermediate analysis files")
-    
-    # Other options
-    pipeline_parser.add_argument("--maxwarn", 
-                                type=int, 
-                                default=1,
-                                help="Max warnings for grompp (default: 1)")
-    pipeline_parser.add_argument("--output_dir", 
-                                default="results",
-                                help="Output directory (default: results)")
-    pipeline_parser.add_argument("--remove_pbc", 
-                                action="store_true", 
-                                default=True,
-                                help="Remove PBC (default)")
-    pipeline_parser.add_argument("--no_pbc", 
-                                action="store_false", 
-                                dest="remove_pbc",
-                                help="Skip PBC removal")
-    pipeline_parser.add_argument("--skip_grompp", 
-                                action="store_true",
-                                help="If this flag is activated, pipeline does not generates .tpr in the output")
-    pipeline_parser.add_argument("--keep_temp", 
-                                action="store_true",
-                                help="Keep temporary files")
-    pipeline_parser.add_argument("--verbose", 
-                                action="store_true",
-                                help="Verbose output")
+    optional_group = pipeline_parser.add_argument_group("Optional arguments")
+    optional_group.add_argument("--output_dir", default="results", help="Output directory (default: results)")
+    optional_group.add_argument("--name_molecule", default="molecule", help="Molecule name (default: molecule)")
+    optional_group.add_argument("--number_molecule", type=int, default=1, help="Number of molecules (default: 1)")
+    optional_group.add_argument("--ff", default="martini_v3.0.0.itp", help="Force field ITP (default: martini_v3.0.0.itp)")
+    optional_group.add_argument("--ions", default="martini_v3.0.0_ions_v1.itp", help="Ions ITP (default: martini_v3.0.0_ions_v1.itp)")
+    optional_group.add_argument("--solvent", default="martini_v3.0.0_solvents_v1.itp", help="Solvent ITP (default: martini_v3.0.0_solvents_v1.itp)")
+    optional_group.add_argument("--title_comments", default="Topology system in Martini 3", help="Topology comments")
+    optional_group.add_argument("--title_system", default="molecule in aqueous solution", help="System title")
+    optional_group.add_argument("--output_topol", default="topol_cg.top", help="Output topology (default: topol_cg.top)")
+    optional_group.add_argument("--default_martini", action="store_true", help="Use default Martini 3 masses (72) and zero charges")
+    optional_group.add_argument("--maxwarn", type=int, default=1, help="Max warnings for grompp (default: 1)")
+    optional_group.add_argument("--remove_pbc", action="store_true", default=True, help="Remove PBC (default: true)")
+    optional_group.add_argument("--no_pbc", action="store_false", dest="remove_pbc", help="Skip PBC removal")
+    optional_group.add_argument("--skip_grompp", action="store_true", help="Skip grompp step")
+    optional_group.add_argument("--skip_analysis", action="store_true", help="Skip bonds/angles/dihedrals analysis")
+    optional_group.add_argument("--analyze_remove_pbc", action="store_true", help="Remove PBC before analysis")
+    optional_group.add_argument("--analyze_group_1", default="System", help="Group for fitting in analysis (default: System)")
+    optional_group.add_argument("--analyze_group_2", default="System", help="Group for output in analysis (default: System)")
+    optional_group.add_argument("--keep_intermediate", action="store_true", help="Keep intermediate analysis files")
+    optional_group.add_argument("--keep_temp", action="store_true", help="Keep temporary files")
+    optional_group.add_argument("--verbose", action="store_true", help="Verbose output")
     
     # Show version
     parser.add_argument("--version", action="version", version="bayesian_potentials 0.1.0")
     
     args = parser.parse_args()
-    
-    # Post-processing for pipeline command
-    if args.command == "pipeline":
-        # Auto-detect python scripts directory
-        if args.python_scripts_dir is None:
-            args.python_scripts_dir = str(get_scripts_dir())
-        
-        # Auto-detect MDP file from package data
-        if args.input_mdp is None and not args.skip_grompp:
-            default_mdp = get_default_mdp()
-            if default_mdp:
-                if args.verbose:
-                    print(f"Using default MDP file: {default_mdp}")
-                args.input_mdp = default_mdp
-            else:
-                if args.verbose:
-                    print("Warning: No default MDP file found. Skipping grompp step.")
-                args.skip_grompp = True
-        
-        # Auto-detect force field directory if not provided
-        if args.path_ff is None and not args.skip_grompp:
-            default_ff_dir = get_default_ff_dir()
-            if default_ff_dir:
-                if args.verbose:
-                    print(f"Auto-detecting force field directory: {default_ff_dir}")
-                args.path_ff = default_ff_dir
-            else:
-                if args.verbose:
-                    print("Warning: Could not auto-detect force field directory.")
-                    print("Topology generation will be skipped.")
-                args.skip_grompp = True
     
     if args.command == "map":
         run_mapping_script(args)
