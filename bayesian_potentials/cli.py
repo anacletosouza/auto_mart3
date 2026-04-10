@@ -258,8 +258,6 @@ def main():
                                help="XTC trajectory file (can be mapped.xtc or processed trajectory)")
     analyze_parser.add_argument("--tpr_file", required=True,
                                help="TPR topology file (CG.tpr)")
-    
-    # Optional PBC removal and alignment options (all optional with defaults)
     analyze_parser.add_argument("--index", default=None,
                                help="Index file for selecting groups (optional)")
     analyze_parser.add_argument("--remove_pbc", action="store_true", default=False,
@@ -335,6 +333,32 @@ def main():
     pipeline_parser.add_argument("--default_martini", 
                                 action="store_true",
                                 help="Use default Martini 3 masses (72) and zero charges")
+    
+    # Analysis options for pipeline
+    pipeline_parser.add_argument("--skip_analysis", 
+                                action="store_true",
+                                help="Skip bonds/angles/dihedrals analysis")
+    pipeline_parser.add_argument("--bonds_ndx", 
+                                default="OUTPUT/NDX/bonds.ndx",
+                                help="Bonds index file (default: OUTPUT/NDX/bonds.ndx)")
+    pipeline_parser.add_argument("--angles_ndx", 
+                                default="OUTPUT/NDX/angles.ndx",
+                                help="Angles index file (default: OUTPUT/NDX/angles.ndx)")
+    pipeline_parser.add_argument("--dihedrals_ndx", 
+                                default="OUTPUT/NDX/dihedrals.ndx",
+                                help="Dihedrals index file (default: OUTPUT/NDX/dihedrals.ndx)")
+    pipeline_parser.add_argument("--analyze_remove_pbc", 
+                                action="store_true",
+                                help="Remove PBC and align trajectory before analysis")
+    pipeline_parser.add_argument("--analyze_group_1", 
+                                default="System",
+                                help="Group for fitting in analysis (default: System)")
+    pipeline_parser.add_argument("--analyze_group_2", 
+                                default="System",
+                                help="Group for output in analysis (default: System)")
+    pipeline_parser.add_argument("--keep_intermediate", 
+                                action="store_true",
+                                help="Keep intermediate analysis files")
     
     # Other options
     pipeline_parser.add_argument("--maxwarn", 
