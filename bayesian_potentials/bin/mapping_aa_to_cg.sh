@@ -446,26 +446,49 @@ fi
 
 # -----------------------
 # Step 4: Analyze bonds, angles, dihedrals
-# -----------------------
 if [ "$SKIP_ANALYSIS" != "true" ]; then
     
     echo ""
     echo "Step 4/4: Analyzing bonds, angles, and dihedrals"
     
-    # Check if index files exist
+    # Ensure NDX files are in the correct location
+    # The analysis script expects NDX files in the NDX/ directory
+    if [ -d "CG_MARTINI3/NDX" ]; then
+        echo "  Copying NDX files from CG_MARTINI3/NDX to NDX/..."
+        mkdir -p NDX
+        cp CG_MARTINI3/NDX/*.ndx NDX/ 2>/dev/null
+        cp CG_MARTINI3/NDX/*.map NDX/ 2>/dev/null
+    fi
+    
+    # Check if index files exist in NDX directory
+    BONDS_NDX="NDX/bonds.ndx"
+    ANGLES_NDX="NDX/angles.ndx"
+    DIHEDRALS_NDX="NDX/dihedrals.ndx"
+    
+    # Verify the files exist
     if [ ! -f "$BONDS_NDX" ]; then
         echo "Warning: Bonds index file not found: $BONDS_NDX"
-        echo "Skipping bonds analysis"
+        echo "Looking in alternative locations..."
+        if [ -f "CG_MARTINI3/NDX/bonds.ndx" ]; then
+            echo "  Found in CG_MARTINI3/NDX/bonds.ndx, copying..."
+            mkdir -p NDX
+            cp CG_MARTINI3/NDX/bonds.ndx NDX/
+            cp CG_MARTINI3/NDX/angles.ndx NDX/ 2>/dev/null
+            cp CG_MARTINI3/NDX/dihedrals.ndx NDX/ 2>/dev/null
+        fi
+    fi
+    
+    # Check again after copying
+    if [ ! -f "$BONDS_NDX" ]; then
+        echo "Error: Bonds index file still not found. Skipping bonds analysis"
     fi
     
     if [ ! -f "$ANGLES_NDX" ]; then
-        echo "Warning: Angles index file not found: $ANGLES_NDX"
-        echo "Skipping angles analysis"
+        echo "Error: Angles index file still not found. Skipping angles analysis"
     fi
     
     if [ ! -f "$DIHEDRALS_NDX" ]; then
-        echo "Warning: Dihedrals index file not found: $DIHEDRALS_NDX"
-        echo "Skipping dihedrals analysis"
+        echo "Error: Dihedrals index file still not found. Skipping dihedrals analysis"
     fi
     
     # Determine which trajectory to use for analysis
@@ -482,8 +505,15 @@ if [ "$SKIP_ANALYSIS" != "true" ]; then
         ANALYZE_ARGS=""
     fi
     
-    # Run analysis if TPR exists
+    # Run analysis if all required files exist
     if [ -f "$ANALYZE_TPR" ] && [ -f "$BONDS_NDX" ] && [ -f "$ANGLES_NDX" ] && [ -f "$DIHEDRALS_NDX" ]; then
+        echo "  Running analysis with:"
+        echo "    - Bonds NDX: $BONDS_NDX"
+        echo "    - Angles NDX: $ANGLES_NDX"
+        echo "    - Dihedrals NDX: $DIHEDRALS_NDX"
+        echo "    - XTC file: $ANALYZE_XTC"
+        echo "    - TPR file: $ANALYZE_TPR"
+        
         # Try to use the module for analysis
         if python -c "import bayesian_potentials.scripts.generate_bonds_angles_dihedrals" 2>/dev/null; then
             ANALYZE_CMD="python -m bayesian_potentials.scripts.generate_bonds_angles_dihedrals"
@@ -502,43 +532,87 @@ if [ "$SKIP_ANALYSIS" != "true" ]; then
         fi
         
         if [ -n "$ANALYZE_CMD" ]; then
+            # Change to results directory to run analysis
+            cd "$ORIGINAL_DIR/$OUTPUT_DIR"
+            
             ANALYZE_CMD_ARGS="--bonds_ndx $BONDS_NDX --angles_ndx $ANGLES_NDX --dihedrals_ndx $DIHEDRALS_NDX --xtc_file $ANALYZE_XTC --tpr_file $ANALYZE_TPR"
             
             if [ -n "$ANALYZE_ARGS" ]; then
                 ANALYZE_CMD_ARGS="$ANALYZE_CMD_ARGS $ANALYZE_ARGS"
             fi
             
-            # Create temporary directory for analysis to avoid clutter
-            ANALYSIS_TEMP_DIR="analysis_temp"
-            mkdir -p "$ANALYSIS_TEMP_DIR"
-            cd "$ANALYSIS_TEMP_DIR"
-            
+            echo "  Running: $ANALYZE_CMD $ANALYZE_CMD_ARGS"
             eval $ANALYZE_CMD $ANALYZE_CMD_ARGS
             
-            # Move XVG files to XVG directory
-            if [ -d "bonds" ]; then
-                mv bonds/*.xvg ../XVG/ 2>/dev/null
-                mv bonds/distr_*.xvg ../XVG/ 2>/dev/null
-                cp bonds/*.txt ../XVG/ 2>/dev/null
+            if [ $? -eq 0 ]; then
+                echo "  ✓ Analysis completed successfully"
+                
+                # Move XVG files to XVG directory if they exist
+                echo "  Moving XVG files to XVG directory..."
+                mkdir -p XVG
+                
+                # Move bond XVG files
+                if [ -d "bonds" ]; then
+                    for file in bonds/*.xvg; do
+                        if [ -f "$file" ]; then
+                            mv "$file" XVG/ 2>/dev/null
+                            echo "    Moved: $file"
+                        fi
+                    done
+                    for file in bonds/distr_*.xvg; do
+                        if [ -f "$file" ]; then
+                            mv "$file" XVG/ 2>/dev/null
+                            echo "    Moved: $file"
+                        fi
+                    done
+                    cp bonds/*.txt XVG/ 2>/dev/null
+                    rm -rf bonds
+                fi
+                
+                # Move angle XVG files
+                if [ -d "angles" ]; then
+                    for file in angles/*.xvg; do
+                        if [ -f "$file" ]; then
+                            mv "$file" XVG/ 2>/dev/null
+                            echo "    Moved: $file"
+                        fi
+                    done
+                    for file in angles/distr_*.xvg; do
+                        if [ -f "$file" ]; then
+                            mv "$file" XVG/ 2>/dev/null
+                            echo "    Moved: $file"
+                        fi
+                    done
+                    cp angles/*.txt XVG/ 2>/dev/null
+                    rm -rf angles
+                fi
+                
+                # Move dihedral XVG files
+                if [ -d "dihedrals" ]; then
+                    for file in dihedrals/*.xvg; do
+                        if [ -f "$file" ]; then
+                            mv "$file" XVG/ 2>/dev/null
+                            echo "    Moved: $file"
+                        fi
+                    done
+                    for file in dihedrals/distr_*.xvg; do
+                        if [ -f "$file" ]; then
+                            mv "$file" XVG/ 2>/dev/null
+                            echo "    Moved: $file"
+                        fi
+                    done
+                    cp dihedrals/*.txt XVG/ 2>/dev/null
+                    rm -rf dihedrals
+                fi
+                
+                # Count XVG files
+                XVG_COUNT=$(ls -1 XVG/*.xvg 2>/dev/null | wc -l)
+                echo "    • Total XVG files generated: $XVG_COUNT"
+            else
+                echo "  ✗ Analysis failed with error code $?"
             fi
             
-            if [ -d "angles" ]; then
-                mv angles/*.xvg ../XVG/ 2>/dev/null
-                mv angles/distr_*.xvg ../XVG/ 2>/dev/null
-                cp angles/*.txt ../XVG/ 2>/dev/null
-            fi
-            
-            if [ -d "dihedrals" ]; then
-                mv dihedrals/*.xvg ../XVG/ 2>/dev/null
-                mv dihedrals/distr_*.xvg ../XVG/ 2>/dev/null
-                cp dihedrals/*.txt ../XVG/ 2>/dev/null
-            fi
-            
-            cd ..
-            rm -rf "$ANALYSIS_TEMP_DIR"
-            
-            echo "  ✓ Analysis completed"
-            echo "    • XVG files in: XVG/"
+            cd "$ORIGINAL_DIR"
         fi
     else
         echo "Warning: Cannot run analysis. Missing required files:"
@@ -546,6 +620,14 @@ if [ "$SKIP_ANALYSIS" != "true" ]; then
         [ ! -f "$BONDS_NDX" ] && echo "  - $BONDS_NDX"
         [ ! -f "$ANGLES_NDX" ] && echo "  - $ANGLES_NDX"
         [ ! -f "$DIHEDRALS_NDX" ] && echo "  - $DIHEDRALS_NDX"
+        
+        # List what we actually have
+        echo ""
+        echo "Files found in NDX/ directory:"
+        ls -la NDX/ 2>/dev/null || echo "  NDX/ directory not found"
+        echo ""
+        echo "Files found in CG_MARTINI3/NDX/ directory:"
+        ls -la CG_MARTINI3/NDX/ 2>/dev/null || echo "  CG_MARTINI3/NDX/ directory not found"
     fi
     
 else
