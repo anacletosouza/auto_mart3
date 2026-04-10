@@ -363,6 +363,14 @@ if [ "$SKIP_GROMPP" != "true" ]; then
     cp GMX/cg.itp "$TOP_TEMP_DIR/"
     cp GMX/cg.gro "$TOP_TEMP_DIR/"
     
+    # Copy force field files to temp directory
+    if [ -d "$PATH_FF_ABS" ]; then
+        cp "$PATH_FF_ABS"/*.itp "$TOP_TEMP_DIR/" 2>/dev/null
+        echo "  ✓ Copied force field files to temp directory"
+    fi
+    
+    cd "$TOP_TEMP_DIR"
+    
     # Try to use the module for topology generation
     if python -c "import bayesian_potentials.scripts.generate_cg_top" 2>/dev/null; then
         TOP_CMD="python -m bayesian_potentials.scripts.generate_cg_top"
@@ -381,9 +389,7 @@ if [ "$SKIP_GROMPP" != "true" ]; then
         log_verbose "Using script: $TOP_SCRIPT"
     fi
     
-    cd "$TOP_TEMP_DIR"
-    
-    TOP_CMD_ARGS="--path_ff $PATH_FF_ABS"
+    TOP_CMD_ARGS="--path_ff ."
     TOP_CMD_ARGS="$TOP_CMD_ARGS --ff $FF"
     TOP_CMD_ARGS="$TOP_CMD_ARGS --ions $IONS"
     TOP_CMD_ARGS="$TOP_CMD_ARGS --solvent $SOLVENT"
@@ -398,15 +404,12 @@ if [ "$SKIP_GROMPP" != "true" ]; then
     eval $TOP_CMD $TOP_CMD_ARGS
     check_error "Topology generation"
     
-    # Fix the topology file to use correct paths
+    # Fix the topology file to remove any path prefixes from include statements
     if [ -f "$OUTPUT_TOPOL" ]; then
         # Remove any path prefixes from include statements
         sed -i 's|#include ".*/|#include "|g' "$OUTPUT_TOPOL"
-        echo "  ✓ Generated: $OUTPUT_TOPOL"
+        echo "  ✓ Generated and fixed: $OUTPUT_TOPOL"
     fi
-    
-    # Copy topology back to GMX directory
-    cp "$OUTPUT_TOPOL" ../GMX/
     
     # Set default files for grompp (now in current directory)
     [ -z "$C_FILE" ] && C_FILE="cg.gro"
@@ -430,6 +433,7 @@ if [ "$SKIP_GROMPP" != "true" ]; then
     
     # Copy TPR back to GMX directory
     cp "$O_FILE" ../GMX/
+    cp "$OUTPUT_TOPOL" ../GMX/
     
     cd ..
     rm -rf "$TOP_TEMP_DIR"
