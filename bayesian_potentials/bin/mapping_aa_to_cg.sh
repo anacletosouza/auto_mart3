@@ -173,11 +173,18 @@ INPUT_MDP_ABS=$(get_abs_path "$INPUT_MDP")
 PATH_FF_ABS=$(get_abs_path "$PATH_FF")
 
 # -----------------------
-# Create output directories
+# Clean previous output directory
 # -----------------------
+if [ -d "$OUTPUT_DIR" ]; then
+    echo "Cleaning previous output directory: $OUTPUT_DIR"
+    rm -rf "$OUTPUT_DIR"
+fi
+
+# Create clean output directories
 mkdir -p "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/GMX"
-mkdir -p "$OUTPUT_DIR/ANALYSIS"
+mkdir -p "$OUTPUT_DIR/CG_MARTINI3"
+mkdir -p "$OUTPUT_DIR/XVG"
 mkdir -p "$OUTPUT_DIR/NDX"
 
 cd "$OUTPUT_DIR" || exit 1
@@ -218,7 +225,8 @@ echo ""
 echo "Output directories:"
 echo "  Main:              $OUTPUT_DIR"
 echo "  GMX files:         $OUTPUT_DIR/GMX/"
-echo "  Analysis:          $OUTPUT_DIR/ANALYSIS/"
+echo "  CG-MARTINI3 files: $OUTPUT_DIR/CG_MARTINI3/"
+echo "  XVG files:         $OUTPUT_DIR/XVG/"
 echo "  NDX files:         $OUTPUT_DIR/NDX/"
 echo ""
 echo "Optional arguments:"
@@ -247,7 +255,7 @@ fi
 CG_MARTINI_CMD="cg-martini3 \
     --input_gro $AA_GRO_ABS \
     --input_beads_definitions $BEADS_JSON_ABS \
-    --output_dir OUTPUT_CG \
+    --output_dir CG_MARTINI3_TEMP \
     --beads_position $BEADS_POSITION \
     --aa_itp $AA_ITP_ABS \
     --force_application \"$FORCE_APPLICATION\""
@@ -260,33 +268,25 @@ log_verbose "Running: $CG_MARTINI_CMD"
 eval $CG_MARTINI_CMD
 check_error "cg-martini3"
 
-# Copy generated files to output directories
-if [ -d "OUTPUT_CG/GRO" ]; then
-    cp OUTPUT_CG/GRO/*.gro . 2>/dev/null
-    cp OUTPUT_CG/GRO/*.gro GMX/ 2>/dev/null
+# Move cg-martini3 outputs to CG_MARTINI3 directory
+if [ -d "CG_MARTINI3_TEMP" ]; then
+    mv CG_MARTINI3_TEMP/* CG_MARTINI3/ 2>/dev/null
+    rm -rf CG_MARTINI3_TEMP
 fi
 
-if [ -d "OUTPUT_CG/ITP" ]; then
-    cp OUTPUT_CG/ITP/*.itp . 2>/dev/null
-    cp OUTPUT_CG/ITP/*.itp GMX/ 2>/dev/null
-fi
-
-if [ -d "OUTPUT_CG/NDX" ]; then
-    cp OUTPUT_CG/NDX/*.ndx NDX/ 2>/dev/null
-    cp OUTPUT_CG/NDX/cg.ndx . 2>/dev/null
-fi
-
-if [ -d "OUTPUT_CG/JSON" ]; then
-    cp OUTPUT_CG/JSON/*.json . 2>/dev/null
+# Copy NDX files to NDX directory
+if [ -d "CG_MARTINI3/NDX" ]; then
+    cp CG_MARTINI3/NDX/*.ndx NDX/ 2>/dev/null
+    cp CG_MARTINI3/NDX/*.map NDX/ 2>/dev/null
 fi
 
 # Set paths for generated files
-CG_NDX="cg.ndx"
+CG_NDX="NDX/cg.ndx"
 BONDS_NDX="NDX/bonds.ndx"
 ANGLES_NDX="NDX/angles.ndx"
 DIHEDRALS_NDX="NDX/dihedrals.ndx"
-CG_GRO="cg.gro"
-CG_ITP="cg.itp"
+CG_GRO="CG_MARTINI3/GRO/cg.gro"
+CG_ITP="CG_MARTINI3/ITP/final_cg.itp"
 
 log_verbose "✓ cg-martini3 completed successfully"
 
@@ -301,14 +301,11 @@ if python -c "import bayesian_potentials.scripts.map_aa_to_cg" 2>/dev/null; then
     MAP_CMD="python -m bayesian_potentials.scripts.map_aa_to_cg"
     log_verbose "Using Python module for mapping"
 else
-    # Try to find the script in common locations
     MAP_SCRIPT=""
     if [ -f "$PACKAGE_DIR/scripts/map_aa_to_cg.py" ]; then
         MAP_SCRIPT="$PACKAGE_DIR/scripts/map_aa_to_cg.py"
     elif [ -f "$SCRIPT_DIR/../scripts/map_aa_to_cg.py" ]; then
         MAP_SCRIPT="$SCRIPT_DIR/../scripts/map_aa_to_cg.py"
-    elif [ -f "$ORIGINAL_DIR/../scripts/map_aa_to_cg.py" ]; then
-        MAP_SCRIPT="$ORIGINAL_DIR/../scripts/map_aa_to_cg.py"
     else
         echo "Error: Could not find map_aa_to_cg.py script"
         exit 1
@@ -317,7 +314,7 @@ else
     log_verbose "Using script: $MAP_SCRIPT"
 fi
 
-MAP_CMD_ARGS="--index_cg $CG_NDX --aa_tpr $AA_TPR_ABS --aa_xtc $AA_XTC_ABS --output_mapped mapped.xtc --output_cg_gro $CG_GRO"
+MAP_CMD_ARGS="--index_cg $CG_NDX --aa_tpr $AA_TPR_ABS --aa_xtc $AA_XTC_ABS --output_mapped GMX/mapped.xtc --output_cg_gro GMX/cg.gro"
 
 if [ "$REMOVE_PBC" = "true" ]; then
     MAP_CMD_ARGS="$MAP_CMD_ARGS --remove_pbc"
@@ -333,82 +330,22 @@ log_verbose "Running: $MAP_CMD $MAP_CMD_ARGS"
 $MAP_CMD $MAP_CMD_ARGS
 check_error "AA→CG mapping"
 
-# Move mapping outputs to GMX directory
-mv mapped.xtc GMX/ 2>/dev/null
-mv $CG_GRO GMX/ 2>/dev/null
-cp GMX/mapped.xtc . 2>/dev/null
-cp GMX/$CG_GRO . 2>/dev/null
-
 echo "  ✓ Generated: GMX/mapped.xtc"
-echo "  ✓ Generated: GMX/$CG_GRO"
+echo "  ✓ Generated: GMX/cg.gro"
 
 # -----------------------
-# Step 2: Generate ITP (using cg-generate-itp or the script)
+# Step 2: Generate ITP (copy from CG_MARTINI3)
 # -----------------------
 echo ""
-echo "Step 2/4: Generating CG ITP"
+echo "Step 2/4: Copying CG ITP"
 
-# Try to use cg-generate-itp command first
-if command -v cg-generate-itp &> /dev/null; then
-    GENERATE_ITP_CMD="cg-generate-itp"
-    log_verbose "Using cg-generate-itp command"
+# Copy ITP from CG_MARTINI3 to GMX
+if [ -f "$CG_ITP" ]; then
+    cp "$CG_ITP" GMX/cg.itp
+    echo "  ✓ Copied: GMX/cg.itp"
 else
-    # Try to use the module
-    if python -c "import bayesian_potentials.scripts.4-defining_atoms_type" 2>/dev/null; then
-        GENERATE_ITP_CMD="python -m bayesian_potentials.scripts.4-defining_atoms_type"
-    else
-        # Fallback to direct script
-        GENERATE_SCRIPT=""
-        if [ -f "$PACKAGE_DIR/scripts/4-defining_atoms_type.py" ]; then
-            GENERATE_SCRIPT="$PACKAGE_DIR/scripts/4-defining_atoms_type.py"
-        elif [ -f "$SCRIPT_DIR/../scripts/4-defining_atoms_type.py" ]; then
-            GENERATE_SCRIPT="$SCRIPT_DIR/../scripts/4-defining_atoms_type.py"
-        else
-            echo "Warning: Could not find ITP generation script. Using default method."
-            GENERATE_ITP_CMD="python -c \"import sys; print('ITP generation not available')\""
-        fi
-        GENERATE_ITP_CMD="python $GENERATE_SCRIPT"
-    fi
+    echo "Warning: ITP file not found at $CG_ITP"
 fi
-
-GENERATE_ITP_ARGS="--cg_gro GMX/$CG_GRO --cg_ndx $CG_NDX --aa_itp $AA_ITP_ABS --output $CG_ITP --name_molecule $NAME_MOLECULE"
-
-# Find the mapping JSON file
-DEF_JSON=""
-if [ -f "$PACKAGE_DIR/../data/definitions_atoms_ff_martini3.json" ]; then
-    DEF_JSON="$PACKAGE_DIR/../data/definitions_atoms_ff_martini3.json"
-elif [ -f "$SCRIPT_DIR/../../data/definitions_atoms_ff_martini3.json" ]; then
-    DEF_JSON="$SCRIPT_DIR/../../data/definitions_atoms_ff_martini3.json"
-fi
-
-if [ -n "$DEF_JSON" ]; then
-    GENERATE_ITP_ARGS="$GENERATE_ITP_ARGS --def_json $DEF_JSON"
-fi
-
-if [ "$DEFAULT_MARTINI" = "true" ]; then
-    GENERATE_ITP_ARGS="$GENERATE_ITP_ARGS --default"
-fi
-
-log_verbose "Running: $GENERATE_ITP_CMD $GENERATE_ITP_ARGS"
-eval $GENERATE_ITP_CMD $GENERATE_ITP_ARGS 2>/dev/null || {
-    echo "Warning: ITP generation failed or not available"
-    echo "Creating a basic ITP file template"
-    cat > $CG_ITP << EOF
-[ moleculetype ]
-$NAME_MOLECULE 1
-
-[ atoms ]
-; id mass charge type
-1 72.0 0.0 BB
-EOF
-}
-check_error "ITP generation"
-
-# Move ITP to GMX directory
-mv $CG_ITP GMX/ 2>/dev/null
-cp GMX/$CG_ITP . 2>/dev/null
-
-echo "  ✓ Generated: GMX/$CG_ITP"
 
 # -----------------------
 # Step 3: Generate topology and run grompp
@@ -440,24 +377,21 @@ if [ "$SKIP_GROMPP" != "true" ]; then
     TOP_CMD_ARGS="$TOP_CMD_ARGS --ff $FF"
     TOP_CMD_ARGS="$TOP_CMD_ARGS --ions $IONS"
     TOP_CMD_ARGS="$TOP_CMD_ARGS --solvent $SOLVENT"
-    TOP_CMD_ARGS="$TOP_CMD_ARGS --itp_ligand GMX/$CG_ITP"
+    TOP_CMD_ARGS="$TOP_CMD_ARGS --itp_ligand GMX/cg.itp"
     TOP_CMD_ARGS="$TOP_CMD_ARGS --name_molecule $NAME_MOLECULE"
     TOP_CMD_ARGS="$TOP_CMD_ARGS --number_molecule $NUMBER_MOLECULE"
     TOP_CMD_ARGS="$TOP_CMD_ARGS --title_comments \"$TITLE_COMMENTS\""
     TOP_CMD_ARGS="$TOP_CMD_ARGS --title_system \"$TITLE_SYSTEM\""
-    TOP_CMD_ARGS="$TOP_CMD_ARGS --output_topol $OUTPUT_TOPOL"
+    TOP_CMD_ARGS="$TOP_CMD_ARGS --output_topol GMX/$OUTPUT_TOPOL"
     
     log_verbose "Running: $TOP_CMD $TOP_CMD_ARGS"
     eval $TOP_CMD $TOP_CMD_ARGS
     check_error "Topology generation"
     
-    # Move topology to GMX directory
-    mv $OUTPUT_TOPOL GMX/ 2>/dev/null
-    cp GMX/$OUTPUT_TOPOL . 2>/dev/null
     echo "  ✓ Generated: GMX/$OUTPUT_TOPOL"
     
     # Set default files for grompp
-    [ -z "$C_FILE" ] && C_FILE="GMX/$CG_GRO"
+    [ -z "$C_FILE" ] && C_FILE="GMX/cg.gro"
     [ -z "$P_FILE" ] && P_FILE="GMX/$OUTPUT_TOPOL"
     [ -z "$O_FILE" ] && O_FILE="GMX/CG.tpr"
     
@@ -545,16 +479,39 @@ if [ "$SKIP_ANALYSIS" != "true" ]; then
                 ANALYZE_CMD_ARGS="$ANALYZE_CMD_ARGS $ANALYZE_ARGS"
             fi
             
-            # Run analysis from ANALYSIS directory
-            cd ANALYSIS
             log_verbose "Running: $ANALYZE_CMD $ANALYZE_CMD_ARGS"
-            eval $ANALYZE_CMD $ANALYZE_CMD_ARGS
-            check_error "Bonds/angles/dihedrals analysis"
             
-            # Move results to ANALYSIS directory (they're already there)
+            # Create temporary directory for analysis to avoid clutter
+            ANALYSIS_TEMP_DIR="analysis_temp"
+            mkdir -p "$ANALYSIS_TEMP_DIR"
+            cd "$ANALYSIS_TEMP_DIR"
+            
+            eval $ANALYZE_CMD $ANALYZE_CMD_ARGS
+            
+            # Move XVG files to XVG directory
+            if [ -d "bonds" ]; then
+                mv bonds/*.xvg ../XVG/ 2>/dev/null
+                mv bonds/distr_*.xvg ../XVG/ 2>/dev/null
+                cp bonds/*.txt ../XVG/ 2>/dev/null
+            fi
+            
+            if [ -d "angles" ]; then
+                mv angles/*.xvg ../XVG/ 2>/dev/null
+                mv angles/distr_*.xvg ../XVG/ 2>/dev/null
+                cp angles/*.txt ../XVG/ 2>/dev/null
+            fi
+            
+            if [ -d "dihedrals" ]; then
+                mv dihedrals/*.xvg ../XVG/ 2>/dev/null
+                mv dihedrals/distr_*.xvg ../XVG/ 2>/dev/null
+                cp dihedrals/*.txt ../XVG/ 2>/dev/null
+            fi
+            
             cd ..
+            rm -rf "$ANALYSIS_TEMP_DIR"
+            
             echo "  ✓ Analysis completed"
-            echo "    • Results in: ANALYSIS/bonds/, ANALYSIS/angles/, ANALYSIS/dihedrals/"
+            echo "    • XVG files in: XVG/"
         fi
     else
         echo "Warning: Cannot run analysis. Missing required files:"
@@ -574,7 +531,6 @@ fi
 # -----------------------
 if [ "$KEEP_TEMP" != "true" ]; then
     log_verbose "Cleaning up temporary files..."
-    rm -rf OUTPUT_CG 2>/dev/null
     find . -name "*.pyc" -type f -delete 2>/dev/null
     find . -name "__pycache__" -type d -delete 2>/dev/null
     find . -name "#*" -type f -delete 2>/dev/null
@@ -604,23 +560,33 @@ Input files:
 Output files:
   Main directory:   $(pwd)
   
-GMX files (results/GMX/):
+GMX files (GMX/):
   - mapped.xtc      Mapped CG trajectory
   - cg.gro          CG coordinates
   - cg.itp          CG topology
   - topol_cg.top    GROMACS topology
-  - CG.tpr          GROMACS TPR file (if grompp ran)
+  - CG.tpr          GROMACS TPR file
 
-Analysis files (results/ANALYSIS/):
-  - bonds/          Bond distance analysis
-  - angles/         Angle analysis
-  - dihedrals/      Dihedral analysis
+CG-MARTINI3 files (CG_MARTINI3/):
+  - GRO/            CG structure files
+  - ITP/            CG topology files
+  - JSON/           Beads definition files
+  - NDX/            Index files
 
-NDX files (results/NDX/):
+XVG files (XVG/):
+  - bond_*.xvg      Bond distance time series
+  - distr_bond_*.xvg Bond distance distributions
+  - ang_*.xvg       Angle time series
+  - distr_ang_*.xvg Angle distributions
+  - dih_*.xvg       Dihedral time series
+  - distr_dih_*.xvg Dihedral distributions
+
+NDX files (NDX/):
   - cg.ndx          CG bead mapping
   - bonds.ndx       Bond definitions
   - angles.ndx      Angle definitions
   - dihedrals.ndx   Dihedral definitions
+  - cg.map          Atom to bead mapping
 
 ==========================================
 EOF
@@ -635,9 +601,10 @@ echo "=========================================="
 echo "Output directory: $(pwd)"
 echo ""
 echo "Directory structure:"
-echo "  ├── GMX/        - GROMACS files (trajectory, topology, TPR)"
-echo "  ├── ANALYSIS/   - Bonds, angles, dihedrals analysis"
-echo "  └── NDX/        - Index files for CG mapping"
+echo "  ├── GMX/           - GROMACS files (trajectory, topology, TPR)"
+echo "  ├── CG_MARTINI3/   - cg-martini3 outputs (GRO, ITP, JSON, NDX)"
+echo "  ├── XVG/           - Analysis XVG files (bonds, angles, dihedrals)"
+echo "  └── NDX/           - Index files for CG mapping"
 echo ""
 echo "Summary saved in: SUMMARY.txt"
 echo "=========================================="
