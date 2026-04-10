@@ -175,8 +175,35 @@ python map_trajectory_to_cg.py \
     --verbose
 
 # 5. Generate bonded parameter distributions
-gmx distance -f mapped.xtc -n bonds.ndx -oall bond_dist.xvg
-gmx angle -f mapped.xtc -n dihedrals.ndx -ov dihedral_dist.xvg
+# Basic analysis (without PBC removal)
+bayesian-potentials analyze \
+    --bonds_ndx OUTPUT/NDX/bonds.ndx \
+    --angles_ndx OUTPUT/NDX/angles.ndx \
+    --dihedrals_ndx OUTPUT/NDX/dihedrals.ndx \
+    --xtc_file mapped.xtc \
+    --tpr_file CG.tpr
+
+# With PBC removal (default groups are "System" for both)
+bayesian-potentials analyze \
+    --bonds_ndx OUTPUT/NDX/bonds.ndx \
+    --angles_ndx OUTPUT/NDX/angles.ndx \
+    --dihedrals_ndx OUTPUT/NDX/dihedrals.ndx \
+    --xtc_file mapped.xtc \
+    --tpr_file CG.tpr \
+    --remove_pbc
+
+# With custom groups and keeping intermediate files
+bayesian-potentials analyze \
+    --bonds_ndx OUTPUT/NDX/bonds.ndx \
+    --angles_ndx OUTPUT/NDX/angles.ndx \
+    --dihedrals_ndx OUTPUT/NDX/dihedrals.ndx \
+    --xtc_file mapped.xtc \
+    --tpr_file CG.tpr \
+    --remove_pbc \
+    --group_1 "Backbone" \
+    --group_2 "System" \
+    --keep_intermediate
+
 ```
 
 ## Output Verification
@@ -267,3 +294,7 @@ MIT License
 
 For issues or questions, please open an issue on GitHub.
 ```
+
+
+
+

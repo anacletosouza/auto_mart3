@@ -1,0 +1,29 @@
+=== Bead Connectivity Report ===
+
+=== Residue Structural Summary ===
+
+Residue 1: 2 beads, 1 internal bonds
+Residue 2: 4 beads, 4 internal bonds
+Residue 3: 3 beads, 3 internal bonds
+Residue 4: 4 beads, 4 internal bonds
+Residue 5: 3 beads, 3 internal bonds
+Residue 6: 3 beads, 3 internal bonds
+Residue 7: 4 beads, 4 internal bonds
+Residue 8: 3 beads, 3 internal bonds
+Residue 9: 4 beads, 4 internal bonds
+
+=== Connection Statistics ===
+
+Total unique bead connections: 37
+Internal bonds (within residue): 29
+External bonds (between residues): 8
+
+=== External Connections ===
+Residue 5_BM3 ----- Residue 6_AM1
+Residue 1_SC1 ----- Residue 2_BG1
+Residue 4_BG1 ----- Residue 2_BG4
+Residue 5_BM2 ----- Residue 8_AM1
+Residue 2_BG4 ----- Residue 3_AF1
+Residue 8_AM2 ----- Residue 9_BG1
+Residue 4_BG4 ----- Residue 5_BM1
+Residue 6_AM2 ----- Residue 7_BG1

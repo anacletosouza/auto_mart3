@@ -124,6 +124,37 @@ def run_topology_script(args):
     finally:
         sys.argv = original_argv
 
+def run_analysis_script(args):
+    """Run the bonds/angles/dihedrals analysis script."""
+    from bayesian_potentials.scripts.generate_bonds_angles_dihedrals import main as analysis_main
+    
+    sys_argv = ["generate_bonds_angles_dihedrals.py"]
+    
+    for key, value in vars(args).items():
+        if key == "command" or value is None:
+            continue
+        
+        # Skip internal flags
+        if key in ["skip_grompp", "verbose"]:
+            continue
+        
+        cmd_key = "--" + key.replace("_", "-")
+        
+        if isinstance(value, bool):
+            if value:
+                sys_argv.append(cmd_key)
+        else:
+            sys_argv.append(cmd_key)
+            sys_argv.append(str(value))
+    
+    original_argv = sys.argv
+    sys.argv = sys_argv
+    
+    try:
+        analysis_main()
+    finally:
+        sys.argv = original_argv
+
 def run_shell_script(args):
     """Run the main shell pipeline script."""
     script_path = get_package_dir() / "bin" / "mapping_aa_to_cg.sh"
@@ -214,6 +245,31 @@ def main():
                            help="Optional system title")
     top_parser.add_argument("--output_topol", type=str, required=True,
                            help="Output topology filename")
+    
+    # Analyze bonds/angles/dihedrals command
+    analyze_parser = subparsers.add_parser("analyze", help="Calculate bonds, angles, and dihedrals from trajectory")
+    analyze_parser.add_argument("--bonds_ndx", required=True,
+                               help="Bonds index file")
+    analyze_parser.add_argument("--angles_ndx", required=True,
+                               help="Angles index file")
+    analyze_parser.add_argument("--dihedrals_ndx", required=True,
+                               help="Dihedrals index file")
+    analyze_parser.add_argument("--xtc_file", required=True,
+                               help="XTC trajectory file (can be mapped.xtc or processed trajectory)")
+    analyze_parser.add_argument("--tpr_file", required=True,
+                               help="TPR topology file (CG.tpr)")
+    
+    # Optional PBC removal and alignment options (all optional with defaults)
+    analyze_parser.add_argument("--index", default=None,
+                               help="Index file for selecting groups (optional)")
+    analyze_parser.add_argument("--remove_pbc", action="store_true", default=False,
+                               help="Remove PBC and align trajectory (recommended for non-aligned systems)")
+    analyze_parser.add_argument("--group_1", default="System",
+                               help="Group for fitting (default: 'System')")
+    analyze_parser.add_argument("--group_2", default="System",
+                               help="Group for output (default: 'System')")
+    analyze_parser.add_argument("--keep_intermediate", action="store_true", default=False,
+                               help="Keep all intermediate files (whole.xtc, center_fit.xtc, reference.pdb)")
     
     # Full pipeline command
     pipeline_parser = subparsers.add_parser("pipeline", help="Run full pipeline")
@@ -346,6 +402,8 @@ def main():
         run_mapping_script(args)
     elif args.command == "gen-top":
         run_topology_script(args)
+    elif args.command == "analyze":
+        run_analysis_script(args)
     elif args.command == "pipeline":
         run_shell_script(args)
     else:

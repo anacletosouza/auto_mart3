@@ -1,0 +1,19 @@
+               :-) GROMACS - gmx distance, 2023.4-conda_forge (-:
+
+Executable:   /home/anacleto/anaconda3/bin.AVX2_256/gmx
+Data prefix:  /home/anacleto/anaconda3
+Working dir:  /tmp/bonds_work_fu_9ohha
+Command line:
+  gmx distance -f /home/anacleto/projects/github/bayesian_potentials/examples/example_1_map_aa_to_cg/results/mapped_center_fit.xtc -n temp_bond_30.ndx -s /home/anacleto/projects/github/bayesian_potentials/examples/example_1_map_aa_to_cg/results/CG.tpr -oall bonds/bond_30.xvg -xvg none
+
+Reading file /home/anacleto/projects/github/bayesian_potentials/examples/example_1_map_aa_to_cg/results/CG.tpr, VERSION 2023.4-conda_forge (single precision)
+Reading file /home/anacleto/projects/github/bayesian_potentials/examples/example_1_map_aa_to_cg/results/CG.tpr, VERSION 2023.4-conda_forge (single precision)
+Reading frame       0 time    0.000   Reading frame       1 time 1000.000   Reading frame       2 time 2000.000   Reading frame       3 time 3000.000   Reading frame       4 time 4000.000   Reading frame       5 time 5000.000   Reading frame       6 time 6000.000   Reading frame       7 time 7000.000   Reading frame       8 time 8000.000   Reading frame       9 time 9000.000   Reading frame      10 time 10000.000   Reading frame      11 time 11000.000   Reading frame      12 time 12000.000   Reading frame      13 time 13000.000   Reading frame      14 time 14000.000   Reading frame      15 time 15000.000   Reading frame      16 time 16000.000   Reading frame      17 time 17000.000   Reading frame      18 time 18000.000   Reading frame      19 time 19000.000   Reading frame      20 time 20000.000   Reading frame      30 time 30000.000   Reading frame      40 time 40000.000   Reading frame      50 time 50000.000   Reading frame      60 time 60000.000   Reading frame      70 time 70000.000   Reading frame      80 time 80000.000   Reading frame      90 time 90000.000   Reading frame     100 time 100000.000   Last frame        100 time 100000.000   
+Analyzed 101 frames, last time 100000.000
+
+GROMACS reminds you: "She Needs Cash to Buy Aspirine For Her Pain" (LIVE)
+
+bond_30:
+  Number of samples:  101
+  Average distance:   0.40416  nm
+  Standard deviation: 0.03059  nm

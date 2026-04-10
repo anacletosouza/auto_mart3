@@ -4,7 +4,8 @@
 # Script: mapping_aa_to_cg.sh
 # Description:
 # Maps atomistic trajectory to coarse-grained (CG),
-# generates topology and runs GROMACS preprocessing.
+# generates topology, runs GROMACS preprocessing,
+# and analyzes bonds/angles/dihedrals.
 # =====================================================
 
 # Get the directory where this script is located
@@ -46,6 +47,16 @@ usage() {
     echo "  --skip_grompp             Skip grompp step to generate CG.tpr (if True)"
     echo "  --keep_temp               Keep temporary files"
     echo "  --verbose                 Verbose output"
+    echo ""
+    echo "Analysis options (bonds/angles/dihedrals):"
+    echo "  --skip_analysis           Skip bonds/angles/dihedrals analysis"
+    echo "  --bonds_ndx FILE          Bonds index file (default: OUTPUT/NDX/bonds.ndx)"
+    echo "  --angles_ndx FILE         Angles index file (default: OUTPUT/NDX/angles.ndx)"
+    echo "  --dihedrals_ndx FILE      Dihedrals index file (default: OUTPUT/NDX/dihedrals.ndx)"
+    echo "  --analyze_remove_pbc      Remove PBC before analysis (optional)"
+    echo "  --analyze_group_1 NAME    Group for fitting (default: System)"
+    echo "  --analyze_group_2 NAME    Group for output (default: System)"
+    echo "  --keep_intermediate       Keep intermediate analysis files"
     echo ""
     echo "Usage example"
     echo ""
@@ -95,7 +106,7 @@ usage() {
 
     echo "### bayesian-potentials pipeline"
     echo ""
-    echo "Complete pipeline: mapping + ITP + topology + grompp."
+    echo "Complete pipeline: mapping + ITP + topology + grompp + analysis."
     echo ""
     echo "bayesian-potentials pipeline \\"
     echo "    --cg_ndx             ../ndx/cg.ndx \\"
@@ -110,7 +121,8 @@ usage() {
     echo "    --output_topol       topol.top \\"
     echo "    --path_ff            ../ff_files \\"
     echo "    --name_molecule      \"molecule\" \\"
-    echo "    --number_molecule    1"
+    echo "    --number_molecule    1 \\"
+    echo "    --analyze_remove_pbc"
     echo ""
 
     exit 1
@@ -149,6 +161,16 @@ VERBOSE="false"
 MAXWARN=1
 OUTPUT_DIR="results"
 
+# Analysis options
+SKIP_ANALYSIS="false"
+BONDS_NDX="OUTPUT/NDX/bonds.ndx"
+ANGLES_NDX="OUTPUT/NDX/angles.ndx"
+DIHEDRALS_NDX="OUTPUT/NDX/dihedrals.ndx"
+ANALYZE_REMOVE_PBC="false"
+ANALYZE_GROUP_1="System"
+ANALYZE_GROUP_2="System"
+KEEP_INTERMEDIATE="false"
+
 C_FILE=""
 O_FILE=""
 P_FILE=""
@@ -185,6 +207,16 @@ while [[ $# -gt 0 ]]; do
         --number_molecule) NUMBER_MOLECULE="$2"; shift 2 ;;
         --title_comments) TITLE_COMMENTS="$2"; shift 2 ;;
         --title_system) TITLE_SYSTEM="$2"; shift 2 ;;
+        
+        # Analysis options
+        --skip_analysis) SKIP_ANALYSIS="true"; shift ;;
+        --bonds_ndx) BONDS_NDX="$2"; shift 2 ;;
+        --angles_ndx) ANGLES_NDX="$2"; shift 2 ;;
+        --dihedrals_ndx) DIHEDRALS_NDX="$2"; shift 2 ;;
+        --analyze_remove_pbc) ANALYZE_REMOVE_PBC="true"; shift ;;
+        --analyze_group_1) ANALYZE_GROUP_1="$2"; shift 2 ;;
+        --analyze_group_2) ANALYZE_GROUP_2="$2"; shift 2 ;;
+        --keep_intermediate) KEEP_INTERMEDIATE="true"; shift ;;
         
         --maxwarn) MAXWARN="$2"; shift 2 ;;
         --output_dir) OUTPUT_DIR="$2"; shift 2 ;;
@@ -313,6 +345,18 @@ if [ -n "$PATH_FF_ABS" ]; then
     echo "  Solvent file:     $SOLVENT"
     echo "  Molecule:         $NAME_MOLECULE ($NUMBER_MOLECULE)"
 fi
+echo ""
+echo "Analysis options:"
+echo "  Skip analysis:     $SKIP_ANALYSIS"
+if [ "$SKIP_ANALYSIS" != "true" ]; then
+    echo "  Bonds NDX:         $BONDS_NDX"
+    echo "  Angles NDX:        $ANGLES_NDX"
+    echo "  Dihedrals NDX:     $DIHEDRALS_NDX"
+    echo "  Remove PBC:        $ANALYZE_REMOVE_PBC"
+    echo "  Group 1:           $ANALYZE_GROUP_1"
+    echo "  Group 2:           $ANALYZE_GROUP_2"
+    echo "  Keep intermediate: $KEEP_INTERMEDIATE"
+fi
 echo "=========================================="
 
 # -----------------------
@@ -322,11 +366,13 @@ echo "=========================================="
 if python -c "import bayesian_potentials.scripts.map_aa_to_cg" 2>/dev/null; then
     MAP_CMD="python -m bayesian_potentials.scripts.map_aa_to_cg"
     TOP_CMD="python -m bayesian_potentials.scripts.generate_cg_top"
+    ANALYZE_CMD="python -m bayesian_potentials.scripts.generate_bonds_angles_dihedrals"
     log_verbose "Using Python module: bayesian_potentials.scripts"
 else
     # Fallback to direct script execution
     MAP_SCRIPT="$PYTHON_SCRIPTS_DIR/1-map_aa_traj_to_cg.py"
     TOP_SCRIPT="$PYTHON_SCRIPTS_DIR/2-obtaining_cg_top.py"
+    ANALYZE_SCRIPT="$PYTHON_SCRIPTS_DIR/generate_bonds_angles_dihedrals.py"
     
     if [ ! -f "$MAP_SCRIPT" ]; then
         echo "Error: Mapping script not found: $MAP_SCRIPT"
@@ -336,9 +382,15 @@ else
         echo "Error: Topology script not found: $TOP_SCRIPT"
         exit 1
     fi
+    if [ ! -f "$ANALYZE_SCRIPT" ] && [ "$SKIP_ANALYSIS" != "true" ]; then
+        echo "Warning: Analysis script not found: $ANALYZE_SCRIPT"
+        echo "Will skip analysis step"
+        SKIP_ANALYSIS="true"
+    fi
     
     MAP_CMD="python $MAP_SCRIPT"
     TOP_CMD="python $TOP_SCRIPT"
+    ANALYZE_CMD="python $ANALYZE_SCRIPT"
     log_verbose "Using direct scripts: $PYTHON_SCRIPTS_DIR"
 fi
 
@@ -355,7 +407,7 @@ fi
 # Step 1: Mapping
 # -----------------------
 echo ""
-echo "Step 1/3: Mapping AA → CG trajectory"
+echo "Step 1/4: Mapping AA → CG trajectory"
 
 MAP_CMD_ARGS="--index_cg $CG_NDX_ABS --aa_tpr $AA_TPR_ABS --aa_xtc $AA_XTC_ABS --output_mapped $OUTPUT_MAPPED --output_cg_gro $OUTPUT_CG_GRO"
 
@@ -379,7 +431,7 @@ echo "  ✓ Generated: $OUTPUT_CG_GRO"
 # Step 2: Generate ITP
 # -----------------------
 echo ""
-echo "Step 2/3: Generating CG ITP"
+echo "Step 2/4: Generating CG ITP"
 
 GENERATE_ITP_ARGS="--cg_gro $OUTPUT_CG_GRO --cg_ndx $CG_NDX_ABS --aa_itp $AA_ITP_ABS --output $OUTPUT_CG_ITP --name_molecule $NAME_MOLECULE"
 
@@ -412,7 +464,7 @@ echo "  ✓ Generated: $OUTPUT_CG_ITP"
 if [ "$SKIP_GROMPP" != "true" ] && [ -n "$INPUT_MDP" ] && [ -n "$PATH_FF_ABS" ]; then
     
     echo ""
-    echo "Step 3/3: Generating topology and running grompp"
+    echo "Step 3/4: Generating topology and running grompp"
     
     # Build command for topology generation
     TOP_CMD_ARGS="--path_ff $PATH_FF_ABS"
@@ -453,7 +505,7 @@ if [ "$SKIP_GROMPP" != "true" ] && [ -n "$INPUT_MDP" ] && [ -n "$PATH_FF_ABS" ];
     
 else
     echo ""
-    echo "Step 3/3: Skipping grompp (--skip_grompp or missing MDP/FF)"
+    echo "Step 3/4: Skipping grompp (--skip_grompp or missing MDP/FF)"
     echo "  Topology files generated:"
     echo "    • $OUTPUT_CG_ITP - CG topology"
     echo "    • $OUTPUT_CG_GRO - CG coordinates"
@@ -463,12 +515,80 @@ else
 fi
 
 # -----------------------
+# Step 4: Analyze bonds, angles, dihedrals
+# -----------------------
+if [ "$SKIP_ANALYSIS" != "true" ]; then
+    
+    echo ""
+    echo "Step 4/4: Analyzing bonds, angles, and dihedrals"
+    
+    # Determine which trajectory to use for analysis
+    if [ "$ANALYZE_REMOVE_PBC" = "true" ]; then
+        ANALYZE_XTC="$OUTPUT_MAPPED"
+        ANALYZE_TPR="$OUTPUT_TPR"
+        ANALYZE_ARGS="--remove_pbc --group_1 \"$ANALYZE_GROUP_1\" --group_2 \"$ANALYZE_GROUP_2\""
+        if [ "$KEEP_INTERMEDIATE" = "true" ]; then
+            ANALYZE_ARGS="$ANALYZE_ARGS --keep_intermediate"
+        fi
+    else
+        ANALYZE_XTC="$OUTPUT_MAPPED"
+        ANALYZE_TPR="$OUTPUT_TPR"
+        ANALYZE_ARGS=""
+    fi
+    
+    # Check if index files exist
+    BONDS_NDX_ABS=$(get_abs_path "$BONDS_NDX")
+    ANGLES_NDX_ABS=$(get_abs_path "$ANGLES_NDX")
+    DIHEDRALS_NDX_ABS=$(get_abs_path "$DIHEDRALS_NDX")
+    
+    if [ ! -f "$BONDS_NDX_ABS" ]; then
+        echo "Warning: Bonds index file not found: $BONDS_NDX_ABS"
+        echo "Skipping bonds analysis"
+    fi
+    
+    if [ ! -f "$ANGLES_NDX_ABS" ]; then
+        echo "Warning: Angles index file not found: $ANGLES_NDX_ABS"
+        echo "Skipping angles analysis"
+    fi
+    
+    if [ ! -f "$DIHEDRALS_NDX_ABS" ]; then
+        echo "Warning: Dihedrals index file not found: $DIHEDRALS_NDX_ABS"
+        echo "Skipping dihedrals analysis"
+    fi
+    
+    # Run analysis if TPR exists
+    if [ -f "$ANALYZE_TPR" ]; then
+        ANALYZE_CMD_ARGS="--bonds_ndx $BONDS_NDX_ABS --angles_ndx $ANGLES_NDX_ABS --dihedrals_ndx $DIHEDRALS_NDX_ABS --xtc_file $ANALYZE_XTC --tpr_file $ANALYZE_TPR"
+        
+        if [ -n "$ANALYZE_ARGS" ]; then
+            ANALYZE_CMD_ARGS="$ANALYZE_CMD_ARGS $ANALYZE_ARGS"
+        fi
+        
+        log_verbose "Running: $ANALYZE_CMD $ANALYZE_CMD_ARGS"
+        eval $ANALYZE_CMD $ANALYZE_CMD_ARGS
+        check_error "Bonds/angles/dihedrals analysis"
+        echo "  ✓ Analysis completed"
+        echo "    • Results in: bonds/, angles/, dihedrals/"
+    else
+        echo "Warning: TPR file not found for analysis: $ANALYZE_TPR"
+        echo "Skipping analysis step"
+    fi
+    
+else
+    echo ""
+    echo "Step 4/4: Skipping bonds/angles/dihedrals analysis (--skip_analysis)"
+fi
+
+# -----------------------
 # Cleanup temporary files
 # -----------------------
 if [ "$KEEP_TEMP" != "true" ]; then
     log_verbose "Cleaning up temporary files..."
     find . -name "*.pyc" -type f -delete 2>/dev/null
     find . -name "__pycache__" -type d -delete 2>/dev/null
+    find . -name "#*" -type f -delete 2>/dev/null  # Remove GROMACS backup files
+    find . -name "*.1#" -type f -delete 2>/dev/null
+    find . -name "*.2#" -type f -delete 2>/dev/null
 fi
 
 # -----------------------
@@ -489,6 +609,13 @@ if [ -f "$OUTPUT_TOPOL" ]; then
 fi
 if [ -n "$O_FILE" ] && [ -f "$O_FILE" ]; then
     echo "  • $O_FILE - GROMACS TPR file"
+fi
+if [ "$SKIP_ANALYSIS" != "true" ] && [ -d "bonds" ]; then
+    echo ""
+    echo "Analysis results:"
+    echo "  • bonds/ - Bond distance data"
+    echo "  • angles/ - Angle data"
+    echo "  • dihedrals/ - Dihedral angle data"
 fi
 echo "=========================================="
 

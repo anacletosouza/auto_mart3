@@ -7,20 +7,20 @@ It is necessary that the number of elements in xtc have the same number of eleme
 
 Usage:
     python3 generate_bonds_angles_dihedrals.py \\
-        --bonds_ndx      bonds.ndx          \\
-        --angles_ndx     angles.ndx         \\
-        --dihedrals_ndx  dihedrals.ndx      \\
-        --xtc_file       md.xtc             \\
-        --tpr_file       md.tpr             \\
+        --bonds_ndx      bonds.ndx (for AA or CG)           \\
+        --angles_ndx     angles.ndx (for AA or CG)        \\
+        --dihedrals_ndx  dihedrals.ndx (for AA or CG)     \\
+        --xtc_file       md.xtc (or mapped.xtc)            \\
+        --tpr_file       md.tpr (or CG.tpr)            \\
                                            \\
         # Optional (required if --remove_pbc is activated): \\
         # Removes PBC and fits the molecule to eliminate rotation/translation \\
         # Recommended if your system is not aligned \\
                                            \\
-        --index          None (default) or index.ndx   \\
+        --index          None (default) or index.ndx (to define the group_1 and/or group_2)  \\
         --remove_pbc                         # Flag to remove PBC \\
-        --group_1        "name group"                   \\
-        --group_2        "System"                       \\
+        --group_1        "Group to output to XTC file. System is a good suggestion"  \\
+        --group_2        "Group that you want to align to remove the "                       \\
         --keep_intermediate                   # Keeps all intermediate files
 """
 
@@ -29,7 +29,20 @@ import subprocess
 import os
 import sys
 import re
+import tempfile
+import shutil
+import glob
 from pathlib import Path
+
+def cleanup_backup_files():
+    """Remove GROMACS backup files (# files) from current directory"""
+    backup_files = glob.glob('#*') + glob.glob('*.#*') + glob.glob('*.1#') + glob.glob('*.2#') + glob.glob('*.3#') + glob.glob('*.4#') + glob.glob('*.5#')
+    for file in backup_files:
+        try:
+            os.remove(file)
+            print(f"Removed old backup file: {file}")
+        except OSError:
+            pass
 
 def setup_directories(analysis_type):
     """Setup directories for each analysis type without removing existing ones"""
@@ -38,9 +51,31 @@ def setup_directories(analysis_type):
         os.makedirs(dir_name)
     return dir_name
 
-def extract_indices(input_file, pattern):
-    """Extract indices from file based on pattern"""
-    with open(input_file, 'r') as f:
+def clean_index_file(input_file):
+    """
+    Clean index file by removing headers, comments, and empty lines.
+    Returns path to temporary cleaned file.
+    """
+    # Create a temporary file
+    temp_fd, temp_path = tempfile.mkstemp(suffix='.ndx', prefix='cleaned_', text=True)
+    
+    with open(temp_fd, 'w') as temp_file:
+        with open(input_file, 'r') as original_file:
+            for line in original_file:
+                # Skip lines that start with '[' (headers) or are empty
+                if line.strip().startswith('[') or not line.strip():
+                    continue
+                # Remove comments (anything after ';')
+                line_without_comments = line.split(';')[0]
+                # Skip if line is empty after removing comments
+                if line_without_comments.strip():
+                    temp_file.write(line_without_comments + '\n')
+    
+    return temp_path
+
+def extract_indices(cleaned_file, pattern):
+    """Extract indices from cleaned file based on pattern"""
+    with open(cleaned_file, 'r') as f:
         content = f.read()
     
     # Find all lines matching the pattern
@@ -60,37 +95,51 @@ def remove_pbc_and_align(xtc_file, tpr_file, index_file, group_1, group_2, keep_
     """
     print("\n=== Removing PBC and Aligning Trajectory ===")
     
-    # Define output files
-    base_name = os.path.splitext(xtc_file)[0]
-    whole_xtc = f"{base_name}_whole.xtc"
-    center_fit_xtc = f"{base_name}_center_fit.xtc"
-    reference_pdb = f"{base_name}_t-0ns.pdb"
+    # Create a temporary directory for PBC processing
+    temp_dir = tempfile.mkdtemp(prefix='gmx_pbc_')
+    print(f"Using temporary directory: {temp_dir}")
+    
+    # Define output files in temporary directory
+    base_name = os.path.splitext(os.path.basename(xtc_file))[0]
+    whole_xtc = os.path.join(temp_dir, f"{base_name}_whole.xtc")
+    center_fit_xtc = os.path.join(temp_dir, f"{base_name}_center_fit.xtc")
+    reference_pdb = os.path.join(temp_dir, f"{base_name}_t-0ns.pdb")
+    
+    # Final output path (outside temp dir if keeping intermediate)
+    if keep_intermediate:
+        final_xtc = f"{base_name}_center_fit.xtc"
+        final_pdb = f"{base_name}_t-0ns.pdb"
+        final_whole = f"{base_name}_whole.xtc"
+    else:
+        final_xtc = center_fit_xtc
     
     # Step 1: Remove PBC to make molecules whole
     print("Step 1: Removing PBC (making molecules whole)...")
     if index_file and os.path.exists(index_file):
-        cmd1 = f"echo {group_2} | gmx trjconv -s {tpr_file} -f {xtc_file} -o {whole_xtc} -pbc whole -n {index_file}"
+        cmd1 = f"echo {group_1} | gmx trjconv -s {tpr_file} -f {xtc_file} -o {whole_xtc} -pbc whole -n {index_file}"
     else:
-        cmd1 = f"echo {group_2} | gmx trjconv -s {tpr_file} -f {xtc_file} -o {whole_xtc} -pbc whole"
+        cmd1 = f"echo {group_1} | gmx trjconv -s {tpr_file} -f {xtc_file} -o {whole_xtc} -pbc whole"
     
     result1 = subprocess.run(cmd1, shell=True, capture_output=True, text=True)
     if result1.returncode != 0:
         print("ERROR: Failed to remove PBC")
         print(result1.stderr)
+        shutil.rmtree(temp_dir)
         sys.exit(1)
     print("PBC removal completed successfully")
     
     # Step 2: Align trajectory (fit rotation + translation)
     print("Step 2: Aligning trajectory (removing rotation and translation)...")
     if index_file and os.path.exists(index_file):
-        cmd2 = f"echo {group_1} {group_2} | gmx trjconv -s {tpr_file} -f {whole_xtc} -o {center_fit_xtc} -fit rot+trans -n {index_file}"
+        cmd2 = f"echo {group_2} {group_1} | gmx trjconv -s {tpr_file} -f {whole_xtc} -o {center_fit_xtc} -fit rot+trans -n {index_file}"
     else:
-        cmd2 = f"echo {group_1} {group_2} | gmx trjconv -s {tpr_file} -f {whole_xtc} -o {center_fit_xtc} -fit rot+trans"
+        cmd2 = f"echo {group_2} {group_1} | gmx trjconv -s {tpr_file} -f {whole_xtc} -o {center_fit_xtc} -fit rot+trans"
     
     result2 = subprocess.run(cmd2, shell=True, capture_output=True, text=True)
     if result2.returncode != 0:
         print("ERROR: Failed to align trajectory")
         print(result2.stderr)
+        shutil.rmtree(temp_dir)
         sys.exit(1)
     print("Alignment completed successfully")
     
@@ -102,37 +151,60 @@ def remove_pbc_and_align(xtc_file, tpr_file, index_file, group_1, group_2, keep_
         cmd3 = f"echo {group_2} | gmx trjconv -s {tpr_file} -f {center_fit_xtc} -o {reference_pdb} -dump 0"
     
     subprocess.run(cmd3, shell=True, capture_output=True, text=True)
-    print(f"Reference structure saved as {reference_pdb}")
+    print(f"Reference structure extracted")
     
-    # Clean up intermediate files if not keeping them
-    if not keep_intermediate:
-        print("Cleaning up intermediate files...")
-        if os.path.exists(whole_xtc) and whole_xtc != center_fit_xtc:
-            os.remove(whole_xtc)
+    # Copy files to final location if keeping intermediate
+    if keep_intermediate:
+        print("Copying intermediate files to current directory...")
+        shutil.copy2(center_fit_xtc, final_xtc)
+        shutil.copy2(reference_pdb, final_pdb)
+        shutil.copy2(whole_xtc, final_whole)
+        print(f"Intermediate files kept: {final_whole}, {final_xtc}, {final_pdb}")
+        result_path = final_xtc
     else:
-        print(f"Intermediate files kept: {whole_xtc}, {center_fit_xtc}, {reference_pdb}")
+        result_path = center_fit_xtc
+        print(f"Processed trajectory: {result_path}")
     
-    return center_fit_xtc
+    # Clean up temporary directory
+    shutil.rmtree(temp_dir)
+    print("Temporary files cleaned up")
+    
+    return result_path
 
 def process_bonds(bonds_ndx, xtc_file, tpr_file):
     """Process bond distances"""
     print("\n=== Processing Bonds ===")
     
-    dir_name = setup_directories("bonds")
-    report_path = os.path.join(dir_name, "report_bonds.txt")
-    data_path = os.path.join(dir_name, "data_bonds.txt")
-    errors_path = os.path.join(dir_name, "errors.log")
+    # Convert to absolute paths
+    bonds_ndx_abs = os.path.abspath(bonds_ndx)
+    xtc_file_abs = os.path.abspath(xtc_file)
+    tpr_file_abs = os.path.abspath(tpr_file)
+    
+    # Create a temporary directory for the entire bond processing
+    temp_work_dir = tempfile.mkdtemp(prefix='bonds_work_')
+    original_dir = os.getcwd()
+    
+    # Change to temp directory
+    os.chdir(temp_work_dir)
+    
+    # Create bonds directory in temp
+    os.makedirs("bonds", exist_ok=True)
+    
+    # Clean the bonds index file
+    cleaned_bonds = clean_index_file(bonds_ndx_abs)
     
     # Extract bonds (lines with exactly 2 numbers)
-    bonds = extract_indices(bonds_ndx, r'^\s*(\d+\s+\d+)\s*$')
+    bonds = extract_indices(cleaned_bonds, r'^\s*(\d+\s+\d+)\s*$')
     
     print(f"Found {len(bonds)} bonds")
     
-    # Create empty files if they don't exist (append mode later)
-    if not os.path.exists(report_path):
-        Path(report_path).touch()
-    if not os.path.exists(data_path):
-        Path(data_path).touch()
+    report_path = os.path.join("bonds", "report_bonds.txt")
+    data_path = os.path.join("bonds", "data_bonds.txt")
+    errors_path = os.path.join("bonds", "errors.log")
+    
+    # Create empty files if they don't exist
+    Path(report_path).touch()
+    Path(data_path).touch()
     
     for i, bond in enumerate(bonds):
         bead_pair = f"{bond[0]} {bond[1]}"
@@ -145,13 +217,13 @@ def process_bonds(bonds_ndx, xtc_file, tpr_file):
             f.write(f"{bead_pair}\n")
         
         # Run gmx distance
-        cmd = f"echo 0 | gmx distance -f {xtc_file} -n {temp_ndx} -s {tpr_file} -oall {dir_name}/bond_{i}.xvg -xvg none"
-        log_path = os.path.join(dir_name, f"bond_{i}.log")
+        cmd = f"echo 0 | gmx distance -f {xtc_file_abs} -n {temp_ndx} -s {tpr_file_abs} -oall bonds/bond_{i}.xvg -xvg none"
+        log_path = os.path.join("bonds", f"bond_{i}.log")
         
         with open(log_path, 'w') as log_file:
             result = subprocess.run(cmd, shell=True, stdout=log_file, stderr=subprocess.STDOUT)
         
-        bond_xvg = os.path.join(dir_name, f"bond_{i}.xvg")
+        bond_xvg = os.path.join("bonds", f"bond_{i}.xvg")
         
         if result.returncode != 0 or not os.path.exists(bond_xvg):
             with open(errors_path, 'a') as errors_file:
@@ -171,8 +243,8 @@ def process_bonds(bonds_ndx, xtc_file, tpr_file):
                         data_file.write(f"{avg_match.group(1)}\n")
                         data_file.write(f"{std_match.group(1)}\n")
             
-            # Run gmx analyze for distribution
-            dist_cmd = f"gmx analyze -f {dir_name}/bond_{i}.xvg -dist {dir_name}/distr_bond_{i}.xvg -xvg none -bw 0.001"
+            # Run gmx analyze for distribution (suppress output)
+            dist_cmd = f"gmx analyze -f bonds/bond_{i}.xvg -dist bonds/distr_bond_{i}.xvg -xvg none -bw 0.001"
             subprocess.run(dist_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             
             # Write to report
@@ -182,26 +254,54 @@ def process_bonds(bonds_ndx, xtc_file, tpr_file):
         # Clean up temp file
         os.remove(temp_ndx)
     
-    print(f"Bonds processing completed. Results in {dir_name}/")
+    # Clean up cleaned index file
+    os.unlink(cleaned_bonds)
+    
+    # Copy results back to original directory
+    if os.path.exists("bonds"):
+        dest_bonds = os.path.join(original_dir, "bonds")
+        if os.path.exists(dest_bonds):
+            shutil.rmtree(dest_bonds)
+        shutil.copytree("bonds", dest_bonds)
+    
+    # Return to original directory and clean up
+    os.chdir(original_dir)
+    shutil.rmtree(temp_work_dir)
+    
+    print(f"Bonds processing completed. Results in bonds/")
 
 def process_angles(angles_ndx, xtc_file):
     """Process angles"""
     print("\n=== Processing Angles ===")
     
-    dir_name = setup_directories("angles")
-    report_path = os.path.join(dir_name, "report_angles.txt")
-    data_path = os.path.join(dir_name, "data_angles.txt")
-    errors_path = os.path.join(dir_name, "errors.log")
+    # Convert to absolute paths
+    angles_ndx_abs = os.path.abspath(angles_ndx)
+    xtc_file_abs = os.path.abspath(xtc_file)
+    
+    # Create a temporary directory for the entire angle processing
+    temp_work_dir = tempfile.mkdtemp(prefix='angles_work_')
+    original_dir = os.getcwd()
+    
+    # Change to temp directory
+    os.chdir(temp_work_dir)
+    
+    # Create angles directory in temp
+    os.makedirs("angles", exist_ok=True)
+    
+    # Clean the angles index file
+    cleaned_angles = clean_index_file(angles_ndx_abs)
     
     # Extract angles (lines with exactly 3 numbers)
-    angles = extract_indices(angles_ndx, r'^\s*(\d+\s+\d+\s+\d+)\s*$')
+    angles = extract_indices(cleaned_angles, r'^\s*(\d+\s+\d+\s+\d+)\s*$')
     
     print(f"Found {len(angles)} angles")
     
-    if not os.path.exists(report_path):
-        Path(report_path).touch()
-    if not os.path.exists(data_path):
-        Path(data_path).touch()
+    report_path = os.path.join("angles", "report_angles.txt")
+    data_path = os.path.join("angles", "data_angles.txt")
+    errors_path = os.path.join("angles", "errors.log")
+    
+    Path(report_path).touch()
+    Path(data_path).touch()
     
     for i, angle in enumerate(angles):
         bead_trio = f"{angle[0]} {angle[1]} {angle[2]}"
@@ -214,13 +314,13 @@ def process_angles(angles_ndx, xtc_file):
             f.write(f"{bead_trio}\n")
         
         # Run gmx angle
-        cmd = f"echo 0 | gmx angle -f {xtc_file} -n {temp_ndx} -ov {dir_name}/ang_{i}.xvg"
-        log_path = os.path.join(dir_name, f"ang_{i}.log")
+        cmd = f"echo 0 | gmx angle -f {xtc_file_abs} -n {temp_ndx} -ov angles/ang_{i}.xvg"
+        log_path = os.path.join("angles", f"ang_{i}.log")
         
         with open(log_path, 'w') as log_file:
             result = subprocess.run(cmd, shell=True, stdout=log_file, stderr=subprocess.STDOUT)
         
-        ang_xvg = os.path.join(dir_name, f"ang_{i}.xvg")
+        ang_xvg = os.path.join("angles", f"ang_{i}.xvg")
         
         if result.returncode != 0 or not os.path.exists(ang_xvg):
             with open(errors_path, 'a') as errors_file:
@@ -240,8 +340,8 @@ def process_angles(angles_ndx, xtc_file):
                         data_file.write(f"{avg_match.group(1)}\n")
                         data_file.write(f"{std_match.group(1)}\n")
             
-            # Run gmx analyze for distribution
-            dist_cmd = f"gmx analyze -f {dir_name}/ang_{i}.xvg -dist {dir_name}/distr_ang_{i}.xvg -xvg none -bw 1.0"
+            # Run gmx analyze for distribution (suppress output)
+            dist_cmd = f"gmx analyze -f angles/ang_{i}.xvg -dist angles/distr_ang_{i}.xvg -xvg none -bw 1.0"
             subprocess.run(dist_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             
             # Write to report
@@ -251,87 +351,123 @@ def process_angles(angles_ndx, xtc_file):
         # Clean up temp file
         os.remove(temp_ndx)
     
-    print(f"Angles processing completed. Results in {dir_name}/")
+    # Clean up cleaned index file
+    os.unlink(cleaned_angles)
+    
+    # Copy results back to original directory
+    if os.path.exists("angles"):
+        dest_angles = os.path.join(original_dir, "angles")
+        if os.path.exists(dest_angles):
+            shutil.rmtree(dest_angles)
+        shutil.copytree("angles", dest_angles)
+    
+    # Return to original directory and clean up
+    os.chdir(original_dir)
+    shutil.rmtree(temp_work_dir)
+    
+    print(f"Angles processing completed. Results in angles/")
 
 def process_dihedrals(dihedrals_ndx, xtc_file):
     """Process dihedrals"""
     print("\n=== Processing Dihedrals ===")
     
-    dir_name = setup_directories("dihedrals")
-    report_path = os.path.join(dir_name, "report_dihedrals.txt")
-    data_path = os.path.join(dir_name, "data_dihedrals.txt")
-    errors_path = os.path.join(dir_name, "errors.log")
+    # Convert to absolute paths
+    dihedrals_ndx_abs = os.path.abspath(dihedrals_ndx)
+    xtc_file_abs = os.path.abspath(xtc_file)
+    
+    # Create a temporary directory for the entire dihedral processing
+    temp_work_dir = tempfile.mkdtemp(prefix='dihedrals_work_')
+    original_dir = os.getcwd()
+    
+    # Change to temp directory
+    os.chdir(temp_work_dir)
+    
+    # Create dihedrals directory in temp
+    os.makedirs("dihedrals", exist_ok=True)
+    
+    # Clean the dihedrals index file
+    cleaned_dihedrals = clean_index_file(dihedrals_ndx_abs)
     
     # Extract dihedrals (lines with exactly 4 numbers)
-    dihedrals = extract_indices(dihedrals_ndx, r'^\s*(\d+\s+\d+\s+\d+\s+\d+)\s*$')
+    dihedrals = extract_indices(cleaned_dihedrals, r'^\s*(\d+\s+\d+\s+\d+\s+\d+)\s*$')
     
     print(f"Found {len(dihedrals)} dihedrals")
     
-    if not os.path.exists(report_path):
-        Path(report_path).touch()
-    if not os.path.exists(data_path):
-        Path(data_path).touch()
+    report_path = os.path.join("dihedrals", "report_dihedrals.txt")
+    data_path = os.path.join("dihedrals", "data_dihedrals.txt")
+    errors_path = os.path.join("dihedrals", "errors.log")
+    
+    Path(report_path).touch()
+    Path(data_path).touch()
     
     for i, dihedral in enumerate(dihedrals):
         bead_quartet = f"{dihedral[0]} {dihedral[1]} {dihedral[2]} {dihedral[3]}"
         print(f"Processing dihedral {i}: {bead_quartet}")
         
-        # Validate bead numbers (1-30 as in original)
-        valid = True
-        for num in dihedral:
-            if num < 1 or num > 30:
-                valid = False
-                with open(errors_path, 'a') as errors_file:
-                    errors_file.write(f"ERROR: bead {num} out of range (1-30)\n")
+        # Create temporary index file
+        temp_ndx = f"temp_dih_{i}.ndx"
+        with open(temp_ndx, 'w') as f:
+            f.write(f"[ dihedral_{i} ]\n")
+            f.write(f"{bead_quartet}\n")
         
-        if valid:
-            # Create temporary index file
-            temp_ndx = f"temp_dih_{i}.ndx"
-            with open(temp_ndx, 'w') as f:
-                f.write(f"[ dihedral_{i} ]\n")
-                f.write(f"{bead_quartet}\n")
-            
-            # Run gmx angle for dihedrals
-            cmd = f"echo 0 | gmx angle -type dihedral -f {xtc_file} -n {temp_ndx} -ov {dir_name}/dih_{i}.xvg"
-            log_path = os.path.join(dir_name, f"dih_{i}.log")
-            
-            with open(log_path, 'w') as log_file:
-                result = subprocess.run(cmd, shell=True, stdout=log_file, stderr=subprocess.STDOUT)
-            
-            dih_xvg = os.path.join(dir_name, f"dih_{i}.xvg")
-            
-            if result.returncode != 0 or not os.path.exists(dih_xvg):
-                with open(errors_path, 'a') as errors_file:
-                    errors_file.write(f"ERROR on dihedral {i}\n")
-                    with open(log_path, 'r') as log_file:
-                        errors_file.write(log_file.read())
-            else:
-                # Extract average and std deviation from log
+        # Run gmx angle for dihedrals
+        cmd = f"echo 0 | gmx angle -type dihedral -f {xtc_file_abs} -n {temp_ndx} -ov dihedrals/dih_{i}.xvg"
+        log_path = os.path.join("dihedrals", f"dih_{i}.log")
+        
+        with open(log_path, 'w') as log_file:
+            result = subprocess.run(cmd, shell=True, stdout=log_file, stderr=subprocess.STDOUT)
+        
+        dih_xvg = os.path.join("dihedrals", f"dih_{i}.xvg")
+        
+        if result.returncode != 0 or not os.path.exists(dih_xvg):
+            with open(errors_path, 'a') as errors_file:
+                errors_file.write(f"ERROR on dihedral {i}\n")
                 with open(log_path, 'r') as log_file:
-                    log_content = log_file.read()
-                    avg_match = re.search(r'< angle >\s+([\d.]+)', log_content)
-                    std_match = re.search(r'Std\. Dev\.\s+([\d.]+)', log_content)
-                    
-                    if avg_match and std_match:
-                        with open(data_path, 'a') as data_file:
-                            data_file.write(f"---- dih {i} ({bead_quartet}) ----\n")
-                            data_file.write(f"{avg_match.group(1)}\n")
-                            data_file.write(f"{std_match.group(1)}\n")
+                    errors_file.write(log_file.read())
+        else:
+            # Extract average and std deviation from log
+            with open(log_path, 'r') as log_file:
+                log_content = log_file.read()
+                avg_match = re.search(r'< angle >\s+([\d.]+)', log_content)
+                std_match = re.search(r'Std\. Dev\.\s+([\d.]+)', log_content)
                 
-                # Run gmx analyze for distribution
-                dist_cmd = f"gmx analyze -f {dir_name}/dih_{i}.xvg -dist {dir_name}/distr_dih_{i}.xvg -xvg none -bw 1.0"
-                subprocess.run(dist_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                
-                # Write to report
-                with open(report_path, 'a') as report_file:
-                    report_file.write(f"{i}: {bead_quartet}\n")
+                if avg_match and std_match:
+                    with open(data_path, 'a') as data_file:
+                        data_file.write(f"---- dih {i} ({bead_quartet}) ----\n")
+                        data_file.write(f"{avg_match.group(1)}\n")
+                        data_file.write(f"{std_match.group(1)}\n")
             
-            # Clean up temp file
-            os.remove(temp_ndx)
+            # Run gmx analyze for distribution (suppress output)
+            dist_cmd = f"gmx analyze -f dihedrals/dih_{i}.xvg -dist dihedrals/distr_dih_{i}.xvg -xvg none -bw 1.0"
+            subprocess.run(dist_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            # Write to report
+            with open(report_path, 'a') as report_file:
+                report_file.write(f"{i}: {bead_quartet}\n")
+        
+        # Clean up temp file
+        os.remove(temp_ndx)
     
-    print(f"Dihedrals processing completed. Results in {dir_name}/")
+    # Clean up cleaned index file
+    os.unlink(cleaned_dihedrals)
+    
+    # Copy results back to original directory
+    if os.path.exists("dihedrals"):
+        dest_dihedrals = os.path.join(original_dir, "dihedrals")
+        if os.path.exists(dest_dihedrals):
+            shutil.rmtree(dest_dihedrals)
+        shutil.copytree("dihedrals", dest_dihedrals)
+    
+    # Return to original directory and clean up
+    os.chdir(original_dir)
+    shutil.rmtree(temp_work_dir)
+    
+    print(f"Dihedrals processing completed. Results in dihedrals/")
 
 def main():
+    # Clean up old backup files before starting
+    cleanup_backup_files()
+    
     parser = argparse.ArgumentParser(
         description='Calculate bonds, angles, and dihedrals from molecular dynamics trajectories.',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -354,7 +490,7 @@ Examples:
         --tpr_file md.tpr \\
         --index index.ndx \\
         --remove_pbc \\
-        --group_1 "Backbone" \\
+        --group_1 "System" \\
         --group_2 "System" \\
         --keep_intermediate
         """
@@ -415,6 +551,9 @@ Examples:
     process_bonds(args.bonds_ndx, xtc_file_to_use, args.tpr_file)
     process_angles(args.angles_ndx, xtc_file_to_use)
     process_dihedrals(args.dihedrals_ndx, xtc_file_to_use)
+    
+    # Final cleanup of any remaining backup files
+    cleanup_backup_files()
     
     print("\n" + "="*50)
     print("Processing completed successfully!")
