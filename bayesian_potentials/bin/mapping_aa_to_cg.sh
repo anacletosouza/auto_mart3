@@ -286,7 +286,7 @@ BONDS_NDX="NDX/bonds.ndx"
 ANGLES_NDX="NDX/angles.ndx"
 DIHEDRALS_NDX="NDX/dihedrals.ndx"
 CG_GRO="CG_MARTINI3/GRO/cg.gro"
-CG_ITP="CG_MARTINI3/ITP/final_cg.itp"
+CG_ITP_SRC="CG_MARTINI3/ITP/final_cg.itp"
 
 log_verbose "✓ cg-martini3 completed successfully"
 
@@ -334,17 +334,17 @@ echo "  ✓ Generated: GMX/mapped.xtc"
 echo "  ✓ Generated: GMX/cg.gro"
 
 # -----------------------
-# Step 2: Generate ITP (copy from CG_MARTINI3)
+# Step 2: Copy CG ITP
 # -----------------------
 echo ""
 echo "Step 2/4: Copying CG ITP"
 
 # Copy ITP from CG_MARTINI3 to GMX
-if [ -f "$CG_ITP" ]; then
-    cp "$CG_ITP" GMX/cg.itp
+if [ -f "$CG_ITP_SRC" ]; then
+    cp "$CG_ITP_SRC" GMX/cg.itp
     echo "  ✓ Copied: GMX/cg.itp"
 else
-    echo "Warning: ITP file not found at $CG_ITP"
+    echo "Warning: ITP file not found at $CG_ITP_SRC"
 fi
 
 # -----------------------
@@ -354,6 +354,14 @@ if [ "$SKIP_GROMPP" != "true" ]; then
     
     echo ""
     echo "Step 3/4: Generating topology and running grompp"
+    
+    # Create a temporary directory for topology generation
+    TOP_TEMP_DIR="topology_temp"
+    mkdir -p "$TOP_TEMP_DIR"
+    
+    # Copy necessary files to temp directory
+    cp GMX/cg.itp "$TOP_TEMP_DIR/"
+    cp GMX/cg.gro "$TOP_TEMP_DIR/"
     
     # Try to use the module for topology generation
     if python -c "import bayesian_potentials.scripts.generate_cg_top" 2>/dev/null; then
@@ -373,29 +381,39 @@ if [ "$SKIP_GROMPP" != "true" ]; then
         log_verbose "Using script: $TOP_SCRIPT"
     fi
     
+    cd "$TOP_TEMP_DIR"
+    
     TOP_CMD_ARGS="--path_ff $PATH_FF_ABS"
     TOP_CMD_ARGS="$TOP_CMD_ARGS --ff $FF"
     TOP_CMD_ARGS="$TOP_CMD_ARGS --ions $IONS"
     TOP_CMD_ARGS="$TOP_CMD_ARGS --solvent $SOLVENT"
-    TOP_CMD_ARGS="$TOP_CMD_ARGS --itp_ligand GMX/cg.itp"
+    TOP_CMD_ARGS="$TOP_CMD_ARGS --itp_ligand cg.itp"
     TOP_CMD_ARGS="$TOP_CMD_ARGS --name_molecule $NAME_MOLECULE"
     TOP_CMD_ARGS="$TOP_CMD_ARGS --number_molecule $NUMBER_MOLECULE"
     TOP_CMD_ARGS="$TOP_CMD_ARGS --title_comments \"$TITLE_COMMENTS\""
     TOP_CMD_ARGS="$TOP_CMD_ARGS --title_system \"$TITLE_SYSTEM\""
-    TOP_CMD_ARGS="$TOP_CMD_ARGS --output_topol GMX/$OUTPUT_TOPOL"
+    TOP_CMD_ARGS="$TOP_CMD_ARGS --output_topol $OUTPUT_TOPOL"
     
     log_verbose "Running: $TOP_CMD $TOP_CMD_ARGS"
     eval $TOP_CMD $TOP_CMD_ARGS
     check_error "Topology generation"
     
-    echo "  ✓ Generated: GMX/$OUTPUT_TOPOL"
+    # Fix the topology file to use correct paths
+    if [ -f "$OUTPUT_TOPOL" ]; then
+        # Remove any path prefixes from include statements
+        sed -i 's|#include ".*/|#include "|g' "$OUTPUT_TOPOL"
+        echo "  ✓ Generated: $OUTPUT_TOPOL"
+    fi
     
-    # Set default files for grompp
-    [ -z "$C_FILE" ] && C_FILE="GMX/cg.gro"
-    [ -z "$P_FILE" ] && P_FILE="GMX/$OUTPUT_TOPOL"
-    [ -z "$O_FILE" ] && O_FILE="GMX/CG.tpr"
+    # Copy topology back to GMX directory
+    cp "$OUTPUT_TOPOL" ../GMX/
     
-    # Run grompp
+    # Set default files for grompp (now in current directory)
+    [ -z "$C_FILE" ] && C_FILE="cg.gro"
+    [ -z "$P_FILE" ] && P_FILE="$OUTPUT_TOPOL"
+    [ -z "$O_FILE" ] && O_FILE="CG.tpr"
+    
+    # Run grompp in the temp directory
     echo ""
     echo "Running grompp..."
     
@@ -409,6 +427,12 @@ if [ "$SKIP_GROMPP" != "true" ]; then
     $GROMPP_CMD
     check_error "grompp"
     echo "  ✓ Generated: $O_FILE"
+    
+    # Copy TPR back to GMX directory
+    cp "$O_FILE" ../GMX/
+    
+    cd ..
+    rm -rf "$TOP_TEMP_DIR"
     
 else
     echo ""
@@ -478,8 +502,6 @@ if [ "$SKIP_ANALYSIS" != "true" ]; then
             if [ -n "$ANALYZE_ARGS" ]; then
                 ANALYZE_CMD_ARGS="$ANALYZE_CMD_ARGS $ANALYZE_ARGS"
             fi
-            
-            log_verbose "Running: $ANALYZE_CMD $ANALYZE_CMD_ARGS"
             
             # Create temporary directory for analysis to avoid clutter
             ANALYSIS_TEMP_DIR="analysis_temp"
