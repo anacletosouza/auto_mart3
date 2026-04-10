@@ -11,4 +11,4 @@ molecule in aqueous solution
 
 [ molecules ]
 ; Compound        #mols
-molecule               1
+sda               1

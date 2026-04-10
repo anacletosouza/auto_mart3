@@ -19,11 +19,11 @@ Internal bonds (within residue): 29
 External bonds (between residues): 8
 
 === External Connections ===
-Residue 2_BG4 ----- Residue 3_AF1
-Residue 8_AM2 ----- Residue 9_BG1
-Residue 1_SC1 ----- Residue 2_BG1
 Residue 5_BM3 ----- Residue 6_AM1
+Residue 1_SC1 ----- Residue 2_BG1
+Residue 5_BM2 ----- Residue 8_AM1
+Residue 2_BG4 ----- Residue 3_AF1
+Residue 4_BG4 ----- Residue 5_BM1
+Residue 8_AM2 ----- Residue 9_BG1
 Residue 4_BG1 ----- Residue 2_BG4
 Residue 6_AM2 ----- Residue 7_BG1
-Residue 5_BM2 ----- Residue 8_AM1
-Residue 4_BG4 ----- Residue 5_BM1

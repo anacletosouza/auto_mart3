@@ -2,7 +2,7 @@
 
 [ moleculetype ]
 ; molname    nrexcl
-  molecule         1
+  sda         1
 
 [ atoms ]
 ; nr   type  resnr  residue  atom    cgnr     charge     mass
