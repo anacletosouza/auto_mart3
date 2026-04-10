@@ -1,0 +1,26 @@
+                :-) GROMACS - gmx angle, 2023.4-conda_forge (-:
+
+Executable:   /home/anacleto/anaconda3/bin.AVX2_256/gmx
+Data prefix:  /home/anacleto/anaconda3
+Working dir:  /tmp/angles_work_6dknw1f1
+Command line:
+  gmx angle -f /tmp/gmx_pbc_v1kfs04r/mapped_center_fit.xtc -n temp_angle_56.ndx -ov angles/ang_56.xvg
+
+
+-------------------------------------------------------
+Program:     gmx angle, version 2023.4-conda_forge
+Source file: src/gromacs/commandline/cmdlineparser.cpp (line 271)
+Function:    void gmx::CommandLineParser::parse(int*, char**)
+
+Error in user input:
+Invalid command-line options
+  In command-line option -f
+    File '/tmp/gmx_pbc_v1kfs04r/mapped_center_fit.xtc' does not exist or is
+    not accessible.
+    The file could not be opened.
+      Reason: No such file or directory
+      (call to fopen() returned error code 2)
+
+For more information and tips for troubleshooting, please check the GROMACS
+website at https://manual.gromacs.org/current/user-guide/run-time-errors.html
+-------------------------------------------------------
