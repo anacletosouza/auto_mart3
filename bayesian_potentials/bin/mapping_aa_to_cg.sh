@@ -447,6 +447,7 @@ fi
 # -----------------------
 # Step 4: Analyze bonds, angles, dihedrals
 # -----------------------
+# Step 4: Analyze bonds, angles, dihedrals
 if [ "$SKIP_ANALYSIS" != "true" ]; then
     
     echo ""
@@ -508,37 +509,74 @@ if [ "$SKIP_ANALYSIS" != "true" ]; then
                 ANALYZE_CMD_ARGS="$ANALYZE_CMD_ARGS $ANALYZE_ARGS"
             fi
             
-            # Create temporary directory for analysis to avoid clutter
-            ANALYSIS_TEMP_DIR="analysis_temp"
-            mkdir -p "$ANALYSIS_TEMP_DIR"
-            cd "$ANALYSIS_TEMP_DIR"
-            
+            # Run the analysis directly in the current directory (not in temp)
+            # This way the script creates bonds/, angles/, dihedrals/ directly
             eval $ANALYZE_CMD $ANALYZE_CMD_ARGS
+            check_error "Bonds/Angles/Dihedrals analysis"
             
             # Move XVG files to XVG directory
+            echo "  Moving XVG files to XVG directory..."
+            
+            # Move bond XVG files
             if [ -d "bonds" ]; then
-                mv bonds/*.xvg ../XVG/ 2>/dev/null
-                mv bonds/distr_*.xvg ../XVG/ 2>/dev/null
-                cp bonds/*.txt ../XVG/ 2>/dev/null
+                for file in bonds/*.xvg; do
+                    if [ -f "$file" ]; then
+                        mv "$file" XVG/ 2>/dev/null
+                        log_verbose "    Moved: $file"
+                    fi
+                done
+                for file in bonds/distr_*.xvg; do
+                    if [ -f "$file" ]; then
+                        mv "$file" XVG/ 2>/dev/null
+                        log_verbose "    Moved: $file"
+                    fi
+                done
+                cp bonds/*.txt XVG/ 2>/dev/null
+                rm -rf bonds
             fi
             
+            # Move angle XVG files
             if [ -d "angles" ]; then
-                mv angles/*.xvg ../XVG/ 2>/dev/null
-                mv angles/distr_*.xvg ../XVG/ 2>/dev/null
-                cp angles/*.txt ../XVG/ 2>/dev/null
+                for file in angles/*.xvg; do
+                    if [ -f "$file" ]; then
+                        mv "$file" XVG/ 2>/dev/null
+                        log_verbose "    Moved: $file"
+                    fi
+                done
+                for file in angles/distr_*.xvg; do
+                    if [ -f "$file" ]; then
+                        mv "$file" XVG/ 2>/dev/null
+                        log_verbose "    Moved: $file"
+                    fi
+                done
+                cp angles/*.txt XVG/ 2>/dev/null
+                rm -rf angles
             fi
             
+            # Move dihedral XVG files
             if [ -d "dihedrals" ]; then
-                mv dihedrals/*.xvg ../XVG/ 2>/dev/null
-                mv dihedrals/distr_*.xvg ../XVG/ 2>/dev/null
-                cp dihedrals/*.txt ../XVG/ 2>/dev/null
+                for file in dihedrals/*.xvg; do
+                    if [ -f "$file" ]; then
+                        mv "$file" XVG/ 2>/dev/null
+                        log_verbose "    Moved: $file"
+                    fi
+                done
+                for file in dihedrals/distr_*.xvg; do
+                    if [ -f "$file" ]; then
+                        mv "$file" XVG/ 2>/dev/null
+                        log_verbose "    Moved: $file"
+                    fi
+                done
+                cp dihedrals/*.txt XVG/ 2>/dev/null
+                rm -rf dihedrals
             fi
-            
-            cd ..
-            rm -rf "$ANALYSIS_TEMP_DIR"
             
             echo "  ✓ Analysis completed"
             echo "    • XVG files in: XVG/"
+            
+            # List XVG files for verification
+            XVG_COUNT=$(ls -1 XVG/*.xvg 2>/dev/null | wc -l)
+            echo "    • Total XVG files generated: $XVG_COUNT"
         fi
     else
         echo "Warning: Cannot run analysis. Missing required files:"
