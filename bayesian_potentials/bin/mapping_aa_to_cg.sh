@@ -630,7 +630,7 @@ fi
 # -----------------------
 # Create summary file
 # -----------------------
-cat > SUMMARY.txt << EOF
+cat > "$OUTPUT_DIR/SUMMARY.txt" << EOF
 ==========================================
 CG Mapping Pipeline Summary
 ==========================================
@@ -681,22 +681,5 @@ NDX files (NDX/):
 ==========================================
 EOF
 
-# -----------------------
-# Done
-# -----------------------
-echo ""
-echo "=========================================="
-echo "✓ Pipeline completed successfully!"
-echo "=========================================="
-echo "Output directory: $(pwd)"
-echo ""
-echo "Directory structure:"
-echo "  ├── GMX/           - GROMACS files (trajectory, topology, TPR)"
-echo "  ├── CG_MARTINI3/   - cg-martini3 outputs (GRO, ITP, JSON, NDX)"
-echo "  ├── XVG/           - Analysis XVG files (bonds, angles, dihedrals)"
-echo "  └── NDX/           - Index files for CG mapping"
-echo ""
-echo "Summary saved in: SUMMARY.txt"
-echo "=========================================="
-
+echo "✓ Summary saved in: $OUTPUT_DIR/SUMMARY.txt"
 cd "$ORIGINAL_DIR"
