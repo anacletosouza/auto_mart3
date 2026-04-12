@@ -25,8 +25,8 @@ usage() {
     echo "  --aa_gro FILE             AA .gro file"
     echo "  --aa_itp FILE             AA .itp file"
     echo "  --beads_json FILE         Beads definition JSON file"
-    echo "  --force_application STR   Force application (e.g., 'random=[1250,30;30,4]')"
-    echo "  --beads_position STR      Beads position ('com' or 'geom')"
+    echo "  --force_application STR   Force application (default: 'random=[1250,30;30,4]')"
+    echo "  --beads_position STR      Beads position (default: 'com')"
     echo "  --input_mdp FILE          MDP file for grompp"
     echo "  --path_ff DIR             Force field directory"
     echo ""
@@ -40,6 +40,7 @@ usage() {
     echo "  --title_comments TEXT     Topology comments"
     echo "  --title_system TEXT       System title"
     echo "  --output_topol FILE       Output topology (default: topol_cg.top)"
+    echo "  --cycle_restr STR         Cycle constraints: 'none' (default), 'fix=3,mode=cycle', or 'mode=linear'"
     echo "  --default_martini         Use default Martini 3 masses (72) and zero charges"
     echo "  --maxwarn N               Max warnings for grompp (default: 1)"
     echo "  --remove_pbc              Remove PBC (default: true)"
@@ -50,11 +51,23 @@ usage() {
     echo "  --keep_temp               Keep temporary files"
     echo "  --verbose                 Verbose output"
     echo ""
-    echo "Example:"
+    echo "Examples:"
+    echo "  # Default run (with random potentials and cycle constraints)"
+    echo "  $0 --aa_tpr setup/md.tpr --aa_xtc setup/md.xtc --aa_gro setup/md.gro \\"
+    echo "     --aa_itp setup/carb.itp --beads_json json/beads_config.json \\"
+    echo "     --input_mdp mdp/minimization.mdp --path_ff ff_files/"
+    echo ""
+    echo "  # Custom force application and cycle constraints"
     echo "  $0 --aa_tpr setup/md.tpr --aa_xtc setup/md.xtc --aa_gro setup/md.gro \\"
     echo "     --aa_itp setup/carb.itp --beads_json json/beads_config.json \\"
     echo "     --force_application 'random=[1250,30;30,4]' --beads_position com \\"
-    echo "     --input_mdp mdp/minimization.mdp --path_ff ff_files/"
+    echo "     --cycle_restr 'fix=3,mode=cycle' --input_mdp mdp/minimization.mdp --path_ff ff_files/"
+    echo ""
+    echo "  # Linear mode (no cycles)"
+    echo "  $0 --aa_tpr setup/md.tpr --aa_xtc setup/md.xtc --aa_gro setup/md.gro \\"
+    echo "     --aa_itp setup/carb.itp --beads_json json/beads_config.json \\"
+    echo "     --force_application 'fix=[1250;25]' --beads_position geom \\"
+    echo "     --cycle_restr 'mode=linear' --input_mdp mdp/minimization.mdp --path_ff ff_files/"
     exit 1
 }
 
@@ -67,8 +80,6 @@ AA_XTC=""
 AA_GRO=""
 AA_ITP=""
 BEADS_JSON=""
-FORCE_APPLICATION=""
-BEADS_POSITION=""
 INPUT_MDP=""
 PATH_FF=""
 
@@ -82,6 +93,10 @@ SOLVENT="martini_v3.0.0_solvents_v1.itp"
 TITLE_COMMENTS="Topology system in Martini 3"
 TITLE_SYSTEM="molecule in aqueous solution"
 OUTPUT_TOPOL="topol_cg.top"
+# Default values for cg-martini3
+FORCE_APPLICATION="random=[1250,30;30,4]"  # Default: random potentials
+BEADS_POSITION="com"                       # Default: center of mass
+CYCLE_RESTR="fix=3,mode=cycle"            # Default: 3-member cycles
 DEFAULT_MARTINI="false"
 MAXWARN=1
 REMOVE_PBC="true"
@@ -123,6 +138,7 @@ while [[ $# -gt 0 ]]; do
         --title_comments) TITLE_COMMENTS="$2"; shift 2 ;;
         --title_system) TITLE_SYSTEM="$2"; shift 2 ;;
         --output_topol) OUTPUT_TOPOL="$2"; shift 2 ;;
+        --cycle_restr) CYCLE_RESTR="$2"; shift 2 ;;
         --default_martini) DEFAULT_MARTINI="true"; shift ;;
         --maxwarn) MAXWARN="$2"; shift 2 ;;
         --remove_pbc) REMOVE_PBC="true"; shift ;;
@@ -144,8 +160,8 @@ done
 # Validate essential arguments
 # -----------------------
 if [ -z "$AA_TPR" ] || [ -z "$AA_XTC" ] || [ -z "$AA_GRO" ] || \
-   [ -z "$AA_ITP" ] || [ -z "$BEADS_JSON" ] || [ -z "$FORCE_APPLICATION" ] || \
-   [ -z "$BEADS_POSITION" ] || [ -z "$INPUT_MDP" ] || [ -z "$PATH_FF" ]; then
+   [ -z "$AA_ITP" ] || [ -z "$BEADS_JSON" ] || \
+   [ -z "$INPUT_MDP" ] || [ -z "$PATH_FF" ]; then
     echo "Error: Missing essential arguments"
     echo ""
     usage
@@ -219,6 +235,7 @@ echo "  AA ITP:            $AA_ITP_ABS"
 echo "  Beads JSON:        $BEADS_JSON_ABS"
 echo "  Force application: $FORCE_APPLICATION"
 echo "  Beads position:    $BEADS_POSITION"
+echo "  Cycle restraints:  $CYCLE_RESTR"
 echo "  Input MDP:         $INPUT_MDP_ABS"
 echo "  FF directory:      $PATH_FF_ABS"
 echo ""
@@ -259,6 +276,7 @@ CG_MARTINI_CMD="cg-martini3 \
     --beads_position $BEADS_POSITION \
     --aa_itp $AA_ITP_ABS \
     --force_application \"$FORCE_APPLICATION\" \
+    --cycle_restr \"$CYCLE_RESTR\" \
     --name_molecule $NAME_MOLECULE"
 
 if [ "$VERBOSE" = "true" ]; then
@@ -625,6 +643,7 @@ Input files:
   Beads JSON:       $BEADS_JSON_ABS
   Force application:$FORCE_APPLICATION
   Beads position:   $BEADS_POSITION
+  Cycle restraints: $CYCLE_RESTR
   Input MDP:        $INPUT_MDP_ABS
   FF directory:     $PATH_FF_ABS
 
