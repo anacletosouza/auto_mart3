@@ -299,6 +299,8 @@ def main():
     optional_group.add_argument("--title_comments", default="Topology system in Martini 3", help="Topology comments")
     optional_group.add_argument("--title_system", default="molecule in aqueous solution", help="System title")
     optional_group.add_argument("--output_topol", default="topol_cg.top", help="Output topology (default: topol_cg.top)")
+    optional_group.add_argument("--cycle_restr", default="fix=3,mode=cycle", 
+                               help='Cycle constraints: "none", "fix=3,mode=cycle" (default), or "mode=linear"')
     optional_group.add_argument("--default_martini", action="store_true", help="Use default Martini 3 masses (72) and zero charges")
     optional_group.add_argument("--maxwarn", type=int, default=1, help="Max warnings for grompp (default: 1)")
     optional_group.add_argument("--remove_pbc", action="store_true", default=True, help="Remove PBC (default: true)")
