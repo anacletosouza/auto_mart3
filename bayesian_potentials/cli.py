@@ -142,7 +142,8 @@ def run_analysis_script(args):
         if key in ["skip_grompp", "verbose"]:
             continue
         
-        cmd_key = "--" + key.replace("_", "-")
+        # Generate_bonds_angles_dihedrals.py expects underscores, not hyphens
+        cmd_key = "--" + key  # Keep underscores
         
         if isinstance(value, bool):
             if value:
@@ -173,7 +174,8 @@ def run_distribution_script(args):
         if key in ["skip_grompp", "verbose"]:
             continue
         
-        cmd_key = "--" + key.replace("_", "-")
+        # bp_distributions.py expects underscores, not hyphens
+        cmd_key = "--" + key  # Keep underscores
         
         if isinstance(value, bool):
             if value:
