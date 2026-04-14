@@ -227,9 +227,45 @@ def run_adaptation_script(args):
     finally:
         sys.argv = original_argv
 
-def run_shell_script(args):
+def run_cg_setup_script(args):
+    """Run the CG system setup pipeline script."""
+    from bayesian_potentials.scripts.bp_prep import main as cg_setup_main
+    
+    sys_argv = ["bp_prep.py"]
+    
+    for key, value in vars(args).items():
+        if key == "command" or value is None:
+            continue
+        
+        # Skip internal flags
+        if key in ["verbose"]:
+            continue
+        
+        # Convert underscores to hyphens for command line arguments
+        cmd_key = "--" + key.replace("_", "-")
+        
+        if isinstance(value, bool):
+            if value:
+                sys_argv.append(cmd_key)
+        else:
+            sys_argv.append(cmd_key)
+            sys_argv.append(str(value))
+    
+    # Add verbose flag if needed
+    if getattr(args, 'verbose', False):
+        sys_argv.append("--verbose")
+    
+    original_argv = sys.argv
+    sys.argv = sys_argv
+    
+    try:
+        cg_setup_main()
+    finally:
+        sys.argv = original_argv
+
+def run_shell_script_AA(args):
     """Run the main shell pipeline script."""
-    script_path = get_bin_dir() / "mapping_aa_to_cg.sh"
+    script_path = get_bin_dir() / "autoparam_AA.sh"
     
     if not script_path.exists():
         print(f"Error: Shell script not found at {script_path}")
@@ -373,8 +409,37 @@ def main():
     adapt_parser.add_argument("--verbose", action="store_true",
                              help="Verbose output showing name changes")
     
-    # Full pipeline command
-    pipeline_parser = subparsers.add_parser("pipeline", help="Run full pipeline")
+    # CG System Setup command (bp_prep)
+    cg_setup_parser = subparsers.add_parser("bp-prep", help="Setup CG system with solvent and ions")
+    cg_setup_parser.add_argument("--input_ref_dir", required=True,
+                                help="Directory containing input files (cg.gro, cg.itp, topol_cg.top)")
+    cg_setup_parser.add_argument("--input_ff_dir", required=True,
+                                help="Force field directory with Martini ITP files")
+    cg_setup_parser.add_argument("--output_dir", default="cg_system",
+                                help="Output directory (default: cg_system)")
+    cg_setup_parser.add_argument("--input_mdp_dir", default=None,
+                                help="MDP files directory (optional, will use default if not provided)")
+    cg_setup_parser.add_argument("--input_name_file_mdp", default="minimization.mdp",
+                                help="MDP filename (default: minimization.mdp)")
+    cg_setup_parser.add_argument("--input_gro", default="cg.gro",
+                                help="Input GRO filename (default: cg.gro)")
+    cg_setup_parser.add_argument("--input_itp", default="cg.itp",
+                                help="Input ITP filename (default: cg.itp)")
+    cg_setup_parser.add_argument("--input_topol", default="topol_cg.top",
+                                help="Input topology filename (default: topol_cg.top)")
+    cg_setup_parser.add_argument("--pbc", default="cubic",
+                                help="PBC type (default: cubic)")
+    cg_setup_parser.add_argument("--sol", default="W",
+                                help="Solvent type (default: W)")
+    cg_setup_parser.add_argument("--salt", type=float, default=0.15,
+                                help="Salt concentration in M (default: 0.15)")
+    cg_setup_parser.add_argument("--skip_grompp", action="store_true",
+                                help="Skip grompp step")
+    cg_setup_parser.add_argument("--verbose", action="store_true",
+                                help="Verbose output")
+    
+    # Full pipeline command (autoparam_aa)
+    pipeline_parser = subparsers.add_parser("autoparam-aa", help="Run full AA to CG parametrization pipeline")
     
     # Essential arguments (required)
     essential_group = pipeline_parser.add_argument_group("Essential arguments")
@@ -405,7 +470,7 @@ def main():
     optional_group.add_argument("--maxwarn", type=int, default=1, help="Max warnings for grompp (default: 1)")
     optional_group.add_argument("--remove_pbc", action="store_true", default=True, help="Remove PBC (default: true)")
     optional_group.add_argument("--no_pbc", action="store_false", dest="remove_pbc", help="Skip PBC removal")
-    optional_group.add_argument("--skip_adapt_itp", action="store_true", help="Skip ITP adaptation step")  # NEW
+    optional_group.add_argument("--skip_adapt_itp", action="store_true", help="Skip ITP adaptation step")
     optional_group.add_argument("--skip_grompp", action="store_true", help="Skip grompp step")
     optional_group.add_argument("--skip_analysis", action="store_true", help="Skip bonds/angles/dihedrals analysis")
     optional_group.add_argument("--skip_distributions", action="store_true", help="Skip distribution statistics calculation")
@@ -450,8 +515,10 @@ def main():
         run_distribution_script(args)
     elif args.command == "adapt-itp":
         run_adaptation_script(args)
-    elif args.command == "pipeline":
-        run_shell_script(args)
+    elif args.command == "bp-prep":
+        run_cg_setup_script(args)
+    elif args.command == "autoparam-aa":
+        run_shell_script_AA(args)
     else:
         parser.print_help()
         sys.exit(1)
