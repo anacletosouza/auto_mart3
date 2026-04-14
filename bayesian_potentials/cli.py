@@ -214,8 +214,9 @@ def run_shell_script(args):
         if isinstance(value, list) and len(value) == 0:
             continue
         
-        # Convert the key from snake_case to kebab-case for shell script
-        cmd_key = "--" + key.replace("_", "-")
+        # IMPORTANT: Keep underscores for shell script (don't convert to hyphens)
+        # The shell script expects underscores, not hyphens
+        cmd_key = "--" + key  # Keep original underscores
         
         # Handle boolean flags
         if isinstance(value, bool):
@@ -226,6 +227,10 @@ def run_shell_script(args):
             # For non-boolean, add flag and value
             cmd_args.append(cmd_key)
             cmd_args.append(str(value))
+    
+    # Debug: print the command if verbose
+    if getattr(args, 'verbose', False):
+        print(f"Running: {' '.join(cmd_args)}")
     
     # Run the script
     try:
