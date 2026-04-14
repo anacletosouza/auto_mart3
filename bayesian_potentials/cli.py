@@ -242,7 +242,7 @@ def run_cg_setup_script(args):
             continue
         
         # Convert underscores to hyphens for command line arguments
-        cmd_key = "--" + key.replace("_", "-")
+        cmd_key = "--" + key
         
         if isinstance(value, bool):
             if value:
