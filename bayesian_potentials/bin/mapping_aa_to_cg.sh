@@ -46,6 +46,7 @@ usage() {
     echo "  --maxwarn N               Max warnings for grompp (default: 1)"
     echo "  --remove_pbc              Remove PBC (default: true)"
     echo "  --no_pbc                  Skip PBC removal"
+    echo "  --skip_adapt_itp          Skip ITP adaptation step"
     echo "  --skip_grompp             Skip grompp step"
     echo "  --skip_analysis           Skip bonds/angles/dihedrals analysis"
     echo "  --skip_distributions      Skip distribution statistics calculation"
@@ -112,6 +113,7 @@ CYCLE_RESTR="fix=3,mode=cycle"            # Default: 3-member cycles
 DEFAULT_MARTINI="false"
 MAXWARN=1
 REMOVE_PBC="true"
+SKIP_ADAPT_ITP="false"                     # NEW: Skip ITP adaptation
 SKIP_GROMPP="false"
 SKIP_ANALYSIS="false"
 SKIP_DISTRIBUTIONS="false"
@@ -166,6 +168,7 @@ while [[ $# -gt 0 ]]; do
         --maxwarn) MAXWARN="$2"; shift 2 ;;
         --remove_pbc) REMOVE_PBC="true"; shift ;;
         --no_pbc) REMOVE_PBC="false"; shift ;;
+        --skip_adapt_itp) SKIP_ADAPT_ITP="true"; shift ;;  # NEW
         --skip_grompp) SKIP_GROMPP="true"; shift ;;
         --skip_analysis) SKIP_ANALYSIS="true"; shift ;;
         --skip_distributions) SKIP_DISTRIBUTIONS="true"; shift ;;
@@ -287,6 +290,7 @@ echo "Optional arguments:"
 echo "  Molecule name:     $NAME_MOLECULE"
 echo "  Number molecules:  $NUMBER_MOLECULE"
 echo "  Remove PBC:        $REMOVE_PBC"
+echo "  Skip adapt ITP:    $SKIP_ADAPT_ITP"  # NEW
 echo "  Skip grompp:       $SKIP_GROMPP"
 echo "  Skip analysis:     $SKIP_ANALYSIS"
 echo "  Run distributions: $RUN_DISTRIBUTIONS"
@@ -309,7 +313,7 @@ echo "=========================================="
 # Step 0: Run cg-martini3 to generate CG mapping
 # -----------------------
 echo ""
-echo "Step 0/5: Running cg-martini3 to generate CG mapping"
+echo "Step 0/6: Running cg-martini3 to generate CG mapping"
 
 # Check if cg-martini3 is available
 if ! command -v cg-martini3 &> /dev/null; then
@@ -362,7 +366,7 @@ log_verbose "✓ cg-martini3 completed successfully"
 # Step 1: Mapping (using map_aa_to_cg.py)
 # -----------------------
 echo ""
-echo "Step 1/5: Mapping AA → CG trajectory"
+echo "Step 1/6: Mapping AA → CG trajectory"
 
 # Try to use the module first, fallback to script
 if python -c "import bayesian_potentials.scripts.map_aa_to_cg" 2>/dev/null; then
@@ -405,7 +409,7 @@ echo "  ✓ Generated: GMX/cg.gro"
 # Step 2: Copy CG ITP
 # -----------------------
 echo ""
-echo "Step 2/5: Copying CG ITP"
+echo "Step 2/6: Copying CG ITP"
 
 # Copy ITP from CG_MARTINI3 to GMX
 if [ -f "$CG_ITP_SRC" ]; then
@@ -416,12 +420,79 @@ else
 fi
 
 # -----------------------
+# Step 2.5: Adapt ITP to match GRO atom names (NEW)
+# -----------------------
+if [ "$SKIP_ADAPT_ITP" != "true" ] && [ -f "GMX/cg.itp" ] && [ -f "GMX/cg.gro" ]; then
+    
+    echo ""
+    echo "Step 2.5/6: Adapting ITP atom names to match GRO reference"
+    
+    # Create a backup of original ITP
+    cp GMX/cg.itp GMX/cg.itp.original
+    
+    # Try to use the module for ITP adaptation
+    if python -c "import bayesian_potentials.scripts.adaptation_gro_itp" 2>/dev/null; then
+        ADAPT_CMD="python -m bayesian_potentials.scripts.adaptation_gro_itp"
+        log_verbose "Using Python module for ITP adaptation"
+    else
+        ADAPT_SCRIPT=""
+        if [ -f "$PACKAGE_DIR/scripts/adaptation_gro_itp.py" ]; then
+            ADAPT_SCRIPT="$PACKAGE_DIR/scripts/adaptation_gro_itp.py"
+        elif [ -f "$SCRIPT_DIR/../scripts/adaptation_gro_itp.py" ]; then
+            ADAPT_SCRIPT="$SCRIPT_DIR/../scripts/adaptation_gro_itp.py"
+        else
+            echo "Warning: Could not find adaptation_gro_itp.py script"
+            ADAPT_SCRIPT=""
+        fi
+        ADAPT_CMD="python $ADAPT_SCRIPT"
+    fi
+    
+    if [ -n "$ADAPT_CMD" ]; then
+        ADAPT_CMD_ARGS="--input_itp GMX/cg.itp"
+        ADAPT_CMD_ARGS="$ADAPT_CMD_ARGS --input_gro_ref GMX/cg.gro"
+        ADAPT_CMD_ARGS="$ADAPT_CMD_ARGS --output_itp_adapted GMX/cg.itp.adapted"
+        
+        if [ "$VERBOSE" = "true" ]; then
+            ADAPT_CMD_ARGS="$ADAPT_CMD_ARGS --verbose"
+        fi
+        
+        log_verbose "Running: $ADAPT_CMD $ADAPT_CMD_ARGS"
+        eval $ADAPT_CMD $ADAPT_CMD_ARGS
+        
+        if [ $? -eq 0 ]; then
+            # Replace original ITP with adapted version
+            mv GMX/cg.itp.adapted GMX/cg.itp
+            echo "  ✓ ITP successfully adapted"
+            if [ "$VERBOSE" = "true" ]; then
+                echo "    Original ITP backed up to: GMX/cg.itp.original"
+            fi
+        else
+            echo "  ✗ ITP adaptation failed, using original ITP"
+            rm -f GMX/cg.itp.adapted
+        fi
+    else
+        echo "  ⚠ ITP adaptation script not found, skipping"
+    fi
+    
+else
+    if [ "$SKIP_ADAPT_ITP" = "true" ]; then
+        echo ""
+        echo "Step 2.5/6: Skipping ITP adaptation (--skip_adapt_itp)"
+    else
+        echo ""
+        echo "Step 2.5/6: Cannot adapt ITP - missing files"
+        [ ! -f "GMX/cg.itp" ] && echo "  ✗ Missing: GMX/cg.itp"
+        [ ! -f "GMX/cg.gro" ] && echo "  ✗ Missing: GMX/cg.gro"
+    fi
+fi
+
+# -----------------------
 # Step 3: Generate topology and run grompp
 # -----------------------
 if [ "$SKIP_GROMPP" != "true" ]; then
     
     echo ""
-    echo "Step 3/5: Generating topology and running grompp"
+    echo "Step 3/6: Generating topology and running grompp"
     
     # Create a temporary directory for topology generation
     TOP_TEMP_DIR="topology_temp"
@@ -508,7 +579,7 @@ if [ "$SKIP_GROMPP" != "true" ]; then
     
 else
     echo ""
-    echo "Step 3/5: Skipping grompp (--skip_grompp)"
+    echo "Step 3/6: Skipping grompp (--skip_grompp)"
 fi
 
 # -----------------------
@@ -517,7 +588,7 @@ fi
 if [ "$SKIP_ANALYSIS" != "true" ]; then
     
     echo ""
-    echo "Step 4/5: Analyzing bonds, angles, and dihedrals"
+    echo "Step 4/6: Analyzing bonds, angles, and dihedrals"
     
     # Ensure NDX files are in the correct location
     if [ -d "CG_MARTINI3/NDX" ]; then
@@ -663,7 +734,7 @@ if [ "$SKIP_ANALYSIS" != "true" ]; then
     
 else
     echo ""
-    echo "Step 4/5: Skipping bonds/angles/dihedrals analysis (--skip_analysis)"
+    echo "Step 4/6: Skipping bonds/angles/dihedrals analysis (--skip_analysis)"
 fi
 
 # -----------------------
@@ -672,7 +743,7 @@ fi
 if [ "$RUN_DISTRIBUTIONS" = "true" ] && [ "$SKIP_DISTRIBUTIONS" != "true" ] && [ "$SKIP_ANALYSIS" != "true" ]; then
     
     echo ""
-    echo "Step 5/5: Calculating distribution statistics"
+    echo "Step 5/6: Calculating distribution statistics"
     
     # Change to results directory
     cd "$ORIGINAL_DIR/$OUTPUT_DIR"
@@ -773,10 +844,10 @@ if [ "$RUN_DISTRIBUTIONS" = "true" ] && [ "$SKIP_DISTRIBUTIONS" != "true" ] && [
 else
     if [ "$RUN_DISTRIBUTIONS" = "true" ] && [ "$SKIP_ANALYSIS" = "true" ]; then
         echo ""
-        echo "Step 5/5: Skipping distribution statistics (analysis was skipped)"
+        echo "Step 5/6: Skipping distribution statistics (analysis was skipped)"
     elif [ "$RUN_DISTRIBUTIONS" != "true" ]; then
         echo ""
-        echo "Step 5/5: Skipping distribution statistics (not requested)"
+        echo "Step 5/6: Skipping distribution statistics (not requested)"
     fi
 fi
 
@@ -818,7 +889,7 @@ Output files:
 GMX files (GMX/):
   - mapped.xtc      Mapped CG trajectory
   - cg.gro          CG coordinates
-  - cg.itp          CG topology
+  - cg.itp          CG topology (adapted)
   - topol_cg.top    GROMACS topology
   - CG.tpr          GROMACS TPR file
 

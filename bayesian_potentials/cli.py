@@ -192,6 +192,41 @@ def run_distribution_script(args):
     finally:
         sys.argv = original_argv
 
+def run_adaptation_script(args):
+    """Run the ITP adaptation script to match GRO atom names."""
+    from bayesian_potentials.scripts.adaptation_gro_itp import main as adapt_main
+    
+    sys_argv = ["adaptation_gro_itp.py"]
+    
+    for key, value in vars(args).items():
+        if key == "command" or value is None:
+            continue
+        
+        # Skip internal flags
+        if key in ["verbose"]:
+            continue
+        
+        cmd_key = "--" + key.replace("_", "_")  # Keep underscores
+        
+        if isinstance(value, bool):
+            if value:
+                sys_argv.append(cmd_key)
+        else:
+            sys_argv.append(cmd_key)
+            sys_argv.append(str(value))
+    
+    # Add verbose flag if needed
+    if getattr(args, 'verbose', False):
+        sys_argv.append("--verbose")
+    
+    original_argv = sys.argv
+    sys.argv = sys_argv
+    
+    try:
+        adapt_main()
+    finally:
+        sys.argv = original_argv
+
 def run_shell_script(args):
     """Run the main shell pipeline script."""
     script_path = get_bin_dir() / "mapping_aa_to_cg.sh"
@@ -327,6 +362,17 @@ def main():
     dist_parser.add_argument("--dihedral_out", default="dihedral_statistics.tsv",
                             help="Dihedral statistics output filename (default: dihedral_statistics.tsv)")
     
+    # Adapt ITP command
+    adapt_parser = subparsers.add_parser("adapt-itp", help="Adapt ITP atom names to match GRO reference")
+    adapt_parser.add_argument("--input_itp", required=True,
+                             help="Input ITP file to adapt")
+    adapt_parser.add_argument("--input_gro_ref", required=True,
+                             help="Reference GRO file with correct atom names")
+    adapt_parser.add_argument("--output_itp_adapted", required=True,
+                             help="Output adapted ITP file")
+    adapt_parser.add_argument("--verbose", action="store_true",
+                             help="Verbose output showing name changes")
+    
     # Full pipeline command
     pipeline_parser = subparsers.add_parser("pipeline", help="Run full pipeline")
     
@@ -359,6 +405,7 @@ def main():
     optional_group.add_argument("--maxwarn", type=int, default=1, help="Max warnings for grompp (default: 1)")
     optional_group.add_argument("--remove_pbc", action="store_true", default=True, help="Remove PBC (default: true)")
     optional_group.add_argument("--no_pbc", action="store_false", dest="remove_pbc", help="Skip PBC removal")
+    optional_group.add_argument("--skip_adapt_itp", action="store_true", help="Skip ITP adaptation step")  # NEW
     optional_group.add_argument("--skip_grompp", action="store_true", help="Skip grompp step")
     optional_group.add_argument("--skip_analysis", action="store_true", help="Skip bonds/angles/dihedrals analysis")
     optional_group.add_argument("--skip_distributions", action="store_true", help="Skip distribution statistics calculation")
@@ -401,6 +448,8 @@ def main():
         run_analysis_script(args)
     elif args.command == "distributions":
         run_distribution_script(args)
+    elif args.command == "adapt-itp":
+        run_adaptation_script(args)
     elif args.command == "pipeline":
         run_shell_script(args)
     else:
