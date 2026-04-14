@@ -1,4 +1,3 @@
-```markdown
 # CG Trajectory Mapper
 
 A Python tool to map atomistic molecular dynamics trajectories to coarse-grained (CG) resolution using GROMACS.

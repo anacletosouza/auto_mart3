@@ -89,6 +89,7 @@ setup(
             "bp-map=bayesian_potentials.scripts.map_aa_to_cg:main",
             "bp-gen-top=bayesian_potentials.scripts.generate_cg_top:main",
             "bp-analyze=bayesian_potentials.scripts.generate_bonds_angles_dihedrals:main",
+            "bp-distributions=bayesian_potentials.scripts.bp_distributions:main",
         ],
     },
     classifiers=[

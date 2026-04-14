@@ -159,6 +159,37 @@ def run_analysis_script(args):
     finally:
         sys.argv = original_argv
 
+def run_distribution_script(args):
+    """Run the bond/angle/dihedral distribution statistics script."""
+    from bayesian_potentials.scripts.bp_distributions import main as bp_main
+    
+    sys_argv = ["bp_distributions.py"]
+    
+    for key, value in vars(args).items():
+        if key == "command" or value is None:
+            continue
+        
+        # Skip internal flags
+        if key in ["skip_grompp", "verbose"]:
+            continue
+        
+        cmd_key = "--" + key.replace("_", "-")
+        
+        if isinstance(value, bool):
+            if value:
+                sys_argv.append(cmd_key)
+        else:
+            sys_argv.append(cmd_key)
+            sys_argv.append(str(value))
+    
+    original_argv = sys.argv
+    sys.argv = sys_argv
+    
+    try:
+        bp_main()
+    finally:
+        sys.argv = original_argv
+
 def run_shell_script(args):
     """Run the main shell pipeline script."""
     script_path = get_bin_dir() / "mapping_aa_to_cg.sh"
@@ -181,17 +212,16 @@ def run_shell_script(args):
         if isinstance(value, list) and len(value) == 0:
             continue
         
-        # Keep original underscore format for the shell script
-        cmd_key = "--" + key
+        # Convert the key from snake_case to kebab-case for shell script
+        cmd_key = "--" + key.replace("_", "-")
         
-        if isinstance(value, list):
-            cmd_args.append(cmd_key)
-            for v in value:
-                cmd_args.append(str(v))
-        elif isinstance(value, bool):
+        # Handle boolean flags
+        if isinstance(value, bool):
             if value:
+                # For boolean True, add the flag
                 cmd_args.append(cmd_key)
         else:
+            # For non-boolean, add flag and value
             cmd_args.append(cmd_key)
             cmd_args.append(str(value))
     
@@ -273,6 +303,23 @@ def main():
     analyze_parser.add_argument("--keep_intermediate", action="store_true", default=False,
                                help="Keep all intermediate files (whole.xtc, center_fit.xtc, reference.pdb)")
     
+    # Distribution statistics command
+    dist_parser = subparsers.add_parser("distributions", help="Calculate distribution statistics from XVG files")
+    dist_parser.add_argument("--bonds_dir", default="bonds",
+                            help="Directory containing bond XVG files (default: bonds)")
+    dist_parser.add_argument("--angles_dir", default="angles",
+                            help="Directory containing angle XVG files (default: angles)")
+    dist_parser.add_argument("--dihedrals_dir", default="dihedrals",
+                            help="Directory containing dihedral XVG files (default: dihedrals)")
+    dist_parser.add_argument("--dir_to_output", default="TSV_statistics",
+                            help="Directory to save statistics TSV files (default: TSV_statistics)")
+    dist_parser.add_argument("--bond_out", default="bond_statistics.tsv",
+                            help="Bond statistics output filename (default: bond_statistics.tsv)")
+    dist_parser.add_argument("--angle_out", default="angle_statistics.tsv",
+                            help="Angle statistics output filename (default: angle_statistics.tsv)")
+    dist_parser.add_argument("--dihedral_out", default="dihedral_statistics.tsv",
+                            help="Dihedral statistics output filename (default: dihedral_statistics.tsv)")
+    
     # Full pipeline command
     pipeline_parser = subparsers.add_parser("pipeline", help="Run full pipeline")
     
@@ -307,12 +354,32 @@ def main():
     optional_group.add_argument("--no_pbc", action="store_false", dest="remove_pbc", help="Skip PBC removal")
     optional_group.add_argument("--skip_grompp", action="store_true", help="Skip grompp step")
     optional_group.add_argument("--skip_analysis", action="store_true", help="Skip bonds/angles/dihedrals analysis")
+    optional_group.add_argument("--skip_distributions", action="store_true", help="Skip distribution statistics calculation")
     optional_group.add_argument("--analyze_remove_pbc", action="store_true", help="Remove PBC before analysis")
     optional_group.add_argument("--analyze_group_1", default="System", help="Group for fitting in analysis (default: System)")
     optional_group.add_argument("--analyze_group_2", default="System", help="Group for output in analysis (default: System)")
     optional_group.add_argument("--keep_intermediate", action="store_true", help="Keep intermediate analysis files")
     optional_group.add_argument("--keep_temp", action="store_true", help="Keep temporary files")
     optional_group.add_argument("--verbose", action="store_true", help="Verbose output")
+    
+    # Distribution statistics options for pipeline
+    dist_group = pipeline_parser.add_argument_group("Distribution statistics options")
+    dist_group.add_argument("--run_distributions", action="store_true", 
+                           help="Run distribution statistics after analysis")
+    dist_group.add_argument("--dist_bonds_dir", default="bonds",
+                           help="Directory for bond XVG files (default: bonds)")
+    dist_group.add_argument("--dist_angles_dir", default="angles",
+                           help="Directory for angle XVG files (default: angles)")
+    dist_group.add_argument("--dist_dihedrals_dir", default="dihedrals",
+                           help="Directory for dihedral XVG files (default: dihedrals)")
+    dist_group.add_argument("--dist_output_dir", default="STATISTICS",
+                           help="Output directory for statistics TSV files (default: STATISTICS)")
+    dist_group.add_argument("--dist_bond_out", default="bond_statistics.tsv",
+                           help="Bond statistics output filename (default: bond_statistics.tsv)")
+    dist_group.add_argument("--dist_angle_out", default="angle_statistics.tsv",
+                           help="Angle statistics output filename (default: angle_statistics.tsv)")
+    dist_group.add_argument("--dist_dihedral_out", default="dihedral_statistics.tsv",
+                           help="Dihedral statistics output filename (default: dihedral_statistics.tsv)")
     
     # Show version
     parser.add_argument("--version", action="version", version="bayesian_potentials 0.1.0")
@@ -325,6 +392,8 @@ def main():
         run_topology_script(args)
     elif args.command == "analyze":
         run_analysis_script(args)
+    elif args.command == "distributions":
+        run_distribution_script(args)
     elif args.command == "pipeline":
         run_shell_script(args)
     else:
