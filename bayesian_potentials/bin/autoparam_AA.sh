@@ -923,88 +923,126 @@ if [ "$SKIP_CG_PREP" != "true" ]; then
     # Determine input_ref_dir (where GMX files are)
     INPUT_REF_DIR="$ORIGINAL_DIR/$OUTPUT_DIR/GMX"
     
-    # Check if required files exist in GMX directory
-    if [ ! -f "$INPUT_REF_DIR/cg.gro" ]; then
-        echo "  ✗ Error: cg.gro not found in $INPUT_REF_DIR"
-        echo "  Skipping CG system preparation"
-    elif [ ! -f "$INPUT_REF_DIR/cg.itp" ]; then
-        echo "  ✗ Error: cg.itp not found in $INPUT_REF_DIR"
-        echo "  Skipping CG system preparation"
-    elif [ ! -f "$INPUT_REF_DIR/topol_cg.top" ] && [ ! -f "$INPUT_REF_DIR/$OUTPUT_TOPOL" ]; then
-        echo "  ✗ Error: Topology file not found in $INPUT_REF_DIR"
-        echo "  Skipping CG system preparation"
+    # Find bp_prep.py script in multiple possible locations
+    BP_PREP_SCRIPT=""
+    
+    # Check in the bayesian_potentials package directory
+    if [ -f "$PACKAGE_DIR/bp_prep.py" ]; then
+        BP_PREP_SCRIPT="$PACKAGE_DIR/bp_prep.py"
+        log_verbose "Found bp_prep.py in: $BP_PREP_SCRIPT"
+    # Check in the scripts directory
+    elif [ -f "$PACKAGE_DIR/scripts/bp_prep.py" ]; then
+        BP_PREP_SCRIPT="$PACKAGE_DIR/scripts/bp_prep.py"
+        log_verbose "Found bp_prep.py in: $BP_PREP_SCRIPT"
+    # Check in the current directory (where autoparam_AA.sh is)
+    elif [ -f "$SCRIPT_DIR/bp_prep.py" ]; then
+        BP_PREP_SCRIPT="$SCRIPT_DIR/bp_prep.py"
+        log_verbose "Found bp_prep.py in: $BP_PREP_SCRIPT"
+    # Check in the parent directory
+    elif [ -f "$SCRIPT_DIR/../bp_prep.py" ]; then
+        BP_PREP_SCRIPT="$SCRIPT_DIR/../bp_prep.py"
+        log_verbose "Found bp_prep.py in: $BP_PREP_SCRIPT"
+    # Check in the user's home or common locations
+    elif [ -f "$HOME/projects/github/bayesian_potentials/bp_prep.py" ]; then
+        BP_PREP_SCRIPT="$HOME/projects/github/bayesian_potentials/bp_prep.py"
+        log_verbose "Found bp_prep.py in: $BP_PREP_SCRIPT"
     else
-        # Find topology file
-        if [ -f "$INPUT_REF_DIR/topol_cg.top" ]; then
-            TOPOL_FILE="topol_cg.top"
+        echo "  ✗ Error: bp_prep.py not found!"
+        echo "    Please provide the path to bp_prep.py or ensure it's in the correct location."
+        echo "    Searched in:"
+        echo "      - $PACKAGE_DIR/bp_prep.py"
+        echo "      - $PACKAGE_DIR/scripts/bp_prep.py"
+        echo "      - $SCRIPT_DIR/bp_prep.py"
+        echo "      - $SCRIPT_DIR/../bp_prep.py"
+        echo "      - $HOME/projects/github/bayesian_potentials/bp_prep.py"
+        echo "  Skipping CG system preparation"
+    fi
+    
+    if [ -n "$BP_PREP_SCRIPT" ] && [ -f "$BP_PREP_SCRIPT" ]; then
+        
+        # Check if required files exist in GMX directory
+        if [ ! -f "$INPUT_REF_DIR/cg.gro" ]; then
+            echo "  ✗ Error: cg.gro not found in $INPUT_REF_DIR"
+            echo "  Skipping CG system preparation"
+        elif [ ! -f "$INPUT_REF_DIR/cg.itp" ]; then
+            echo "  ✗ Error: cg.itp not found in $INPUT_REF_DIR"
+            echo "  Skipping CG system preparation"
+        elif [ ! -f "$INPUT_REF_DIR/topol_cg.top" ] && [ ! -f "$INPUT_REF_DIR/$OUTPUT_TOPOL" ]; then
+            echo "  ✗ Error: Topology file not found in $INPUT_REF_DIR"
+            echo "  Skipping CG system preparation"
         else
-            TOPOL_FILE="$OUTPUT_TOPOL"
-        fi
-        
-        # Build bp_prep.py command
-        BP_PREP_CMD="python $SCRIPT_DIR/../bp_prep.py"
-        
-        # Essential arguments
-        BP_PREP_CMD="$BP_PREP_CMD --input_ref_dir $INPUT_REF_DIR"
-        BP_PREP_CMD="$BP_PREP_CMD --input_gro cg.gro"
-        BP_PREP_CMD="$BP_PREP_CMD --input_itp cg.itp"
-        BP_PREP_CMD="$BP_PREP_CMD --input_topol $TOPOL_FILE"
-        BP_PREP_CMD="$BP_PREP_CMD --output_dir $MDRUN_CG_DIR"
-        
-        # Force field files
-        BP_PREP_CMD="$BP_PREP_CMD --ff $FF"
-        BP_PREP_CMD="$BP_PREP_CMD --ions $IONS"
-        BP_PREP_CMD="$BP_PREP_CMD --solvent $SOLVENT"
-        
-        # Path to ff_files (use the provided path_ff)
-        if [ -n "$PATH_FF_ABS" ]; then
-            BP_PREP_CMD="$BP_PREP_CMD --input_ff_dir $PATH_FF_ABS"
-        fi
-        
-        # Water file
-        if [ -n "$CG_PREP_WATER_DIR" ]; then
-            BP_PREP_CMD="$BP_PREP_CMD --water_dir $CG_PREP_WATER_DIR"
-        fi
-        BP_PREP_CMD="$BP_PREP_CMD --water_file_gro $CG_PREP_WATER_GRO"
-        
-        # Ions MDP
-        if [ -n "$CG_PREP_IONS_MDP_DIR" ]; then
-            BP_PREP_CMD="$BP_PREP_CMD --ions_mdp_dir $CG_PREP_IONS_MDP_DIR"
-        fi
-        BP_PREP_CMD="$BP_PREP_CMD --ions_file_mdp $CG_PREP_IONS_MDP_FILE"
-        
-        # Minimization MDP
-        BP_PREP_CMD="$BP_PREP_CMD --input_name_file_mdp $CG_PREP_MIN_MDP_FILE"
-        
-        # Box definition
-        if [ "$CG_PREP_USE_DISTANCE" = "true" ]; then
-            BP_PREP_CMD="$BP_PREP_CMD --use_distance_from_atom"
-            BP_PREP_CMD="$BP_PREP_CMD --distance_from_atom $CG_PREP_DISTANCE"
-        elif [ -n "$CG_PREP_BOX_SIZE" ]; then
-            BP_PREP_CMD="$BP_PREP_CMD --box_size $CG_PREP_BOX_SIZE"
-        fi
-        
-        # Solvation parameters
-        if [ -n "$CG_PREP_MAX_SOLVENT" ]; then
-            BP_PREP_CMD="$BP_PREP_CMD --max_solvent $CG_PREP_MAX_SOLVENT"
-        fi
-        
-        # Salt concentration
-        BP_PREP_CMD="$BP_PREP_CMD --salt $CG_PREP_SALT"
-        
-        # Verbose mode
-        if [ "$VERBOSE" = "true" ]; then
-            BP_PREP_CMD="$BP_PREP_CMD --verbose"
-        fi
-        
-        echo "  Running: $BP_PREP_CMD"
-        eval $BP_PREP_CMD
-        
-        if [ $? -eq 0 ]; then
-            echo "  ✓ CG system preparation completed successfully"
-            echo "    Output in: $MDRUN_CG_DIR/"
-        else
-            echo "  ✗ CG system preparation failed"
+            # Find topology file
+            if [ -f "$INPUT_REF_DIR/topol_cg.top" ]; then
+                TOPOL_FILE="topol_cg.top"
+            else
+                TOPOL_FILE="$OUTPUT_TOPOL"
+            fi
+            
+            # Build bp_prep.py command
+            BP_PREP_CMD="python $BP_PREP_SCRIPT"
+            
+            # Essential arguments
+            BP_PREP_CMD="$BP_PREP_CMD --input_ref_dir $INPUT_REF_DIR"
+            BP_PREP_CMD="$BP_PREP_CMD --input_gro cg.gro"
+            BP_PREP_CMD="$BP_PREP_CMD --input_itp cg.itp"
+            BP_PREP_CMD="$BP_PREP_CMD --input_topol $TOPOL_FILE"
+            BP_PREP_CMD="$BP_PREP_CMD --output_dir $MDRUN_CG_DIR"
+            
+            # Force field files
+            BP_PREP_CMD="$BP_PREP_CMD --ff $FF"
+            BP_PREP_CMD="$BP_PREP_CMD --ions $IONS"
+            BP_PREP_CMD="$BP_PREP_CMD --solvent $SOLVENT"
+            
+            # Path to ff_files (use the provided path_ff)
+            if [ -n "$PATH_FF_ABS" ]; then
+                BP_PREP_CMD="$BP_PREP_CMD --input_ff_dir $PATH_FF_ABS"
+            fi
+            
+            # Water file
+            if [ -n "$CG_PREP_WATER_DIR" ]; then
+                BP_PREP_CMD="$BP_PREP_CMD --water_dir $CG_PREP_WATER_DIR"
+            fi
+            BP_PREP_CMD="$BP_PREP_CMD --water_file_gro $CG_PREP_WATER_GRO"
+            
+            # Ions MDP
+            if [ -n "$CG_PREP_IONS_MDP_DIR" ]; then
+                BP_PREP_CMD="$BP_PREP_CMD --ions_mdp_dir $CG_PREP_IONS_MDP_DIR"
+            fi
+            BP_PREP_CMD="$BP_PREP_CMD --ions_file_mdp $CG_PREP_IONS_MDP_FILE"
+            
+            # Minimization MDP
+            BP_PREP_CMD="$BP_PREP_CMD --input_name_file_mdp $CG_PREP_MIN_MDP_FILE"
+            
+            # Box definition
+            if [ "$CG_PREP_USE_DISTANCE" = "true" ]; then
+                BP_PREP_CMD="$BP_PREP_CMD --use_distance_from_atom"
+                BP_PREP_CMD="$BP_PREP_CMD --distance_from_atom $CG_PREP_DISTANCE"
+            elif [ -n "$CG_PREP_BOX_SIZE" ]; then
+                BP_PREP_CMD="$BP_PREP_CMD --box_size $CG_PREP_BOX_SIZE"
+            fi
+            
+            # Solvation parameters
+            if [ -n "$CG_PREP_MAX_SOLVENT" ]; then
+                BP_PREP_CMD="$BP_PREP_CMD --max_solvent $CG_PREP_MAX_SOLVENT"
+            fi
+            
+            # Salt concentration
+            BP_PREP_CMD="$BP_PREP_CMD --salt $CG_PREP_SALT"
+            
+            # Verbose mode
+            if [ "$VERBOSE" = "true" ]; then
+                BP_PREP_CMD="$BP_PREP_CMD --verbose"
+            fi
+            
+            echo "  Running: $BP_PREP_CMD"
+            eval $BP_PREP_CMD
+            
+            if [ $? -eq 0 ]; then
+                echo "  ✓ CG system preparation completed successfully"
+                echo "    Output in: $MDRUN_CG_DIR/"
+            else
+                echo "  ✗ CG system preparation failed"
+            fi
         fi
     fi
     
