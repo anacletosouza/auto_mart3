@@ -8,6 +8,7 @@
 # - Generates topology, runs GROMACS preprocessing
 # - Analyzes bonds/angles/dihedrals from CG trajectories
 # - Calculates distribution statistics (optional)
+# - PREPARES CG SYSTEM FOR SIMULATION (bp_prep.py)
 # =====================================================
 
 # Get the directory where this script is located
@@ -50,9 +51,22 @@ usage() {
     echo "  --skip_grompp             Skip grompp step"
     echo "  --skip_analysis           Skip bonds/angles/dihedrals analysis"
     echo "  --skip_distributions      Skip distribution statistics calculation"
+    echo "  --skip_cg_prep            Skip CG system preparation (bp_prep.py)"
     echo "  --analyze_remove_pbc      Remove PBC before analysis"
     echo "  --keep_temp               Keep temporary files"
     echo "  --verbose                 Verbose output"
+    echo ""
+    echo "CG SYSTEM PREPARATION ARGUMENTS (bp_prep.py):"
+    echo "  --cg_prep_use_distance     Use distance from atom for box size"
+    echo "  --cg_prep_distance NM      Distance from atom in nm (default: 1.2)"
+    echo "  --cg_prep_box_size NM      Fixed box size in nm"
+    echo "  --cg_prep_max_solvent N    Maximum number of solvent molecules"
+    echo "  --cg_prep_salt CONC        Salt concentration in M (default: 0.15)"
+    echo "  --cg_prep_water_gro FILE   Water GRO filename (default: water.gro)"
+    echo "  --cg_prep_water_dir DIR    Water GRO directory"
+    echo "  --cg_prep_ions_mdp DIR     Ions MDP directory"
+    echo "  --cg_prep_ions_file FILE   Ions MDP filename (default: ions.mdp)"
+    echo "  --cg_prep_min_mdp FILE     Minimization MDP filename (default: minimization.mdp)"
     echo ""
     echo "DISTRIBUTION STATISTICS ARGUMENTS (optional):"
     echo "  --run_distributions       Run distribution statistics calculation"
@@ -70,17 +84,18 @@ usage() {
     echo "     --aa_itp setup/carb.itp --beads_json json/beads_config.json \\"
     echo "     --input_mdp mdp/minimization.mdp --path_ff ff_files/"
     echo ""
-    echo "  # Run with distribution statistics"
+    echo "  # Run with CG system preparation"
     echo "  $0 --aa_tpr setup/md.tpr --aa_xtc setup/md.xtc --aa_gro setup/md.gro \\"
     echo "     --aa_itp setup/carb.itp --beads_json json/beads_config.json \\"
     echo "     --input_mdp mdp/minimization.mdp --path_ff ff_files/ \\"
-    echo "     --run_distributions"
+    echo "     --cg_prep_use_distance --cg_prep_distance 1.2 --cg_prep_salt 0.15"
     echo ""
-    echo "  # Custom distribution output"
+    echo "  # Custom water and ions configuration"
     echo "  $0 --aa_tpr setup/md.tpr --aa_xtc setup/md.xtc --aa_gro setup/md.gro \\"
     echo "     --aa_itp setup/carb.itp --beads_json json/beads_config.json \\"
     echo "     --input_mdp mdp/minimization.mdp --path_ff ff_files/ \\"
-    echo "     --run_distributions --dist_output_dir MY_STATS --dist_bond_out bonds_stats.tsv"
+    echo "     --cg_prep_use_distance --cg_prep_water_dir /path/to/water \\"
+    echo "     --cg_prep_water_file my_water.gro --cg_prep_ions_mdp /path/to/mdp"
     exit 1
 }
 
@@ -113,10 +128,11 @@ CYCLE_RESTR="fix=3,mode=cycle"            # Default: 3-member cycles
 DEFAULT_MARTINI="false"
 MAXWARN=1
 REMOVE_PBC="true"
-SKIP_ADAPT_ITP="false"                     # NEW: Skip ITP adaptation
+SKIP_ADAPT_ITP="false"
 SKIP_GROMPP="false"
 SKIP_ANALYSIS="false"
 SKIP_DISTRIBUTIONS="false"
+SKIP_CG_PREP="false"                       # NEW: Skip CG preparation
 RUN_DISTRIBUTIONS="false"
 ANALYZE_REMOVE_PBC="false"
 ANALYZE_GROUP_1="System"
@@ -124,6 +140,18 @@ ANALYZE_GROUP_2="System"
 KEEP_INTERMEDIATE="false"
 KEEP_TEMP="false"
 VERBOSE="false"
+
+# CG Preparation defaults (for bp_prep.py)
+CG_PREP_USE_DISTANCE="false"
+CG_PREP_DISTANCE="1.2"
+CG_PREP_BOX_SIZE=""
+CG_PREP_MAX_SOLVENT=""
+CG_PREP_SALT="0.15"
+CG_PREP_WATER_GRO="water.gro"
+CG_PREP_WATER_DIR=""
+CG_PREP_IONS_MDP_DIR=""
+CG_PREP_IONS_MDP_FILE="ions.mdp"
+CG_PREP_MIN_MDP_FILE="minimization.mdp"
 
 # Distribution statistics defaults
 DIST_BONDS_DIR="bonds"
@@ -168,10 +196,11 @@ while [[ $# -gt 0 ]]; do
         --maxwarn) MAXWARN="$2"; shift 2 ;;
         --remove_pbc) REMOVE_PBC="true"; shift ;;
         --no_pbc) REMOVE_PBC="false"; shift ;;
-        --skip_adapt_itp) SKIP_ADAPT_ITP="true"; shift ;;  # NEW
+        --skip_adapt_itp) SKIP_ADAPT_ITP="true"; shift ;;
         --skip_grompp) SKIP_GROMPP="true"; shift ;;
         --skip_analysis) SKIP_ANALYSIS="true"; shift ;;
         --skip_distributions) SKIP_DISTRIBUTIONS="true"; shift ;;
+        --skip_cg_prep) SKIP_CG_PREP="true"; shift ;;
         --run_distributions) RUN_DISTRIBUTIONS="true"; shift ;;
         --analyze_remove_pbc) ANALYZE_REMOVE_PBC="true"; shift ;;
         --analyze_group_1) ANALYZE_GROUP_1="$2"; shift 2 ;;
@@ -179,6 +208,18 @@ while [[ $# -gt 0 ]]; do
         --keep_intermediate) KEEP_INTERMEDIATE="true"; shift ;;
         --keep_temp) KEEP_TEMP="true"; shift ;;
         --verbose) VERBOSE="true"; shift ;;
+        
+        # CG Preparation arguments
+        --cg_prep_use_distance) CG_PREP_USE_DISTANCE="true"; shift ;;
+        --cg_prep_distance) CG_PREP_DISTANCE="$2"; shift 2 ;;
+        --cg_prep_box_size) CG_PREP_BOX_SIZE="$2"; shift 2 ;;
+        --cg_prep_max_solvent) CG_PREP_MAX_SOLVENT="$2"; shift 2 ;;
+        --cg_prep_salt) CG_PREP_SALT="$2"; shift 2 ;;
+        --cg_prep_water_gro) CG_PREP_WATER_GRO="$2"; shift 2 ;;
+        --cg_prep_water_dir) CG_PREP_WATER_DIR="$2"; shift 2 ;;
+        --cg_prep_ions_mdp) CG_PREP_IONS_MDP_DIR="$2"; shift 2 ;;
+        --cg_prep_ions_file) CG_PREP_IONS_MDP_FILE="$2"; shift 2 ;;
+        --cg_prep_min_mdp) CG_PREP_MIN_MDP_FILE="$2"; shift 2 ;;
         
         # Distribution statistics arguments
         --dist_bonds_dir) DIST_BONDS_DIR="$2"; shift 2 ;;
@@ -240,7 +281,8 @@ mkdir -p "$OUTPUT_DIR/GMX"
 mkdir -p "$OUTPUT_DIR/CG_MARTINI3"
 mkdir -p "$OUTPUT_DIR/XVG"
 mkdir -p "$OUTPUT_DIR/NDX"
-mkdir -p "$OUTPUT_DIR/STATISTICS"  # Create statistics directory
+mkdir -p "$OUTPUT_DIR/STATISTICS"
+mkdir -p "$OUTPUT_DIR/MDRUN_CG"  # NEW: Directory for bp_prep.py output
 
 cd "$OUTPUT_DIR" || exit 1
 
@@ -285,14 +327,16 @@ echo "  CG-MARTINI3 files: $OUTPUT_DIR/CG_MARTINI3/"
 echo "  XVG files:         $OUTPUT_DIR/XVG/"
 echo "  NDX files:         $OUTPUT_DIR/NDX/"
 echo "  Statistics:        $OUTPUT_DIR/STATISTICS/"
+echo "  CG Run:            $OUTPUT_DIR/MDRUN_CG/"
 echo ""
 echo "Optional arguments:"
 echo "  Molecule name:     $NAME_MOLECULE"
 echo "  Number molecules:  $NUMBER_MOLECULE"
 echo "  Remove PBC:        $REMOVE_PBC"
-echo "  Skip adapt ITP:    $SKIP_ADAPT_ITP"  # NEW
+echo "  Skip adapt ITP:    $SKIP_ADAPT_ITP"
 echo "  Skip grompp:       $SKIP_GROMPP"
 echo "  Skip analysis:     $SKIP_ANALYSIS"
+echo "  Skip CG prep:      $SKIP_CG_PREP"
 echo "  Run distributions: $RUN_DISTRIBUTIONS"
 echo "  Analyze remove PBC:$ANALYZE_REMOVE_PBC"
 echo "  Verbose:           $VERBOSE"
@@ -307,13 +351,27 @@ if [ "$RUN_DISTRIBUTIONS" = "true" ]; then
     echo "  Angle output:      $DIST_ANGLE_OUT"
     echo "  Dihedral output:   $DIST_DIHEDRAL_OUT"
 fi
+if [ "$SKIP_CG_PREP" != "true" ]; then
+    echo ""
+    echo "CG System Preparation (bp_prep.py):"
+    if [ "$CG_PREP_USE_DISTANCE" = "true" ]; then
+        echo "  Box method:        distance from atom ($CG_PREP_DISTANCE nm)"
+    elif [ -n "$CG_PREP_BOX_SIZE" ]; then
+        echo "  Box method:        fixed size ($CG_PREP_BOX_SIZE nm)"
+    else
+        echo "  Box method:        default padding (1.5 nm)"
+    fi
+    echo "  Salt concentration: $CG_PREP_SALT M"
+    echo "  Water file:         $CG_PREP_WATER_GRO"
+    [ -n "$CG_PREP_MAX_SOLVENT" ] && echo "  Max solvent:        $CG_PREP_MAX_SOLVENT"
+fi
 echo "=========================================="
 
 # -----------------------
 # Step 0: Run cg-martini3 to generate CG mapping
 # -----------------------
 echo ""
-echo "Step 0/6: Running cg-martini3 to generate CG mapping"
+echo "Step 0/7: Running cg-martini3 to generate CG mapping"
 
 # Check if cg-martini3 is available
 if ! command -v cg-martini3 &> /dev/null; then
@@ -366,7 +424,7 @@ log_verbose "✓ cg-martini3 completed successfully"
 # Step 1: Mapping (using map_aa_to_cg.py)
 # -----------------------
 echo ""
-echo "Step 1/6: Mapping AA → CG trajectory"
+echo "Step 1/7: Mapping AA → CG trajectory"
 
 # Try to use the module first, fallback to script
 if python -c "import bayesian_potentials.scripts.map_aa_to_cg" 2>/dev/null; then
@@ -409,7 +467,7 @@ echo "  ✓ Generated: GMX/cg.gro"
 # Step 2: Copy CG ITP
 # -----------------------
 echo ""
-echo "Step 2/6: Copying CG ITP"
+echo "Step 2/7: Copying CG ITP"
 
 # Copy ITP from CG_MARTINI3 to GMX
 if [ -f "$CG_ITP_SRC" ]; then
@@ -420,12 +478,12 @@ else
 fi
 
 # -----------------------
-# Step 2.5: Adapt ITP to match GRO atom names (NEW)
+# Step 2.5: Adapt ITP to match GRO atom names
 # -----------------------
 if [ "$SKIP_ADAPT_ITP" != "true" ] && [ -f "GMX/cg.itp" ] && [ -f "GMX/cg.gro" ]; then
     
     echo ""
-    echo "Step 2.5/6: Adapting ITP atom names to match GRO reference"
+    echo "Step 2.5/7: Adapting ITP atom names to match GRO reference"
     
     # Create a backup of original ITP
     cp GMX/cg.itp GMX/cg.itp.original
@@ -477,10 +535,10 @@ if [ "$SKIP_ADAPT_ITP" != "true" ] && [ -f "GMX/cg.itp" ] && [ -f "GMX/cg.gro" ]
 else
     if [ "$SKIP_ADAPT_ITP" = "true" ]; then
         echo ""
-        echo "Step 2.5/6: Skipping ITP adaptation (--skip_adapt_itp)"
+        echo "Step 2.5/7: Skipping ITP adaptation (--skip_adapt_itp)"
     else
         echo ""
-        echo "Step 2.5/6: Cannot adapt ITP - missing files"
+        echo "Step 2.5/7: Cannot adapt ITP - missing files"
         [ ! -f "GMX/cg.itp" ] && echo "  ✗ Missing: GMX/cg.itp"
         [ ! -f "GMX/cg.gro" ] && echo "  ✗ Missing: GMX/cg.gro"
     fi
@@ -492,7 +550,7 @@ fi
 if [ "$SKIP_GROMPP" != "true" ]; then
     
     echo ""
-    echo "Step 3/6: Generating topology and running grompp"
+    echo "Step 3/7: Generating topology and running grompp"
     
     # Create a temporary directory for topology generation
     TOP_TEMP_DIR="topology_temp"
@@ -579,7 +637,7 @@ if [ "$SKIP_GROMPP" != "true" ]; then
     
 else
     echo ""
-    echo "Step 3/6: Skipping grompp (--skip_grompp)"
+    echo "Step 3/7: Skipping grompp (--skip_grompp)"
 fi
 
 # -----------------------
@@ -588,7 +646,7 @@ fi
 if [ "$SKIP_ANALYSIS" != "true" ]; then
     
     echo ""
-    echo "Step 4/6: Analyzing bonds, angles, and dihedrals"
+    echo "Step 4/7: Analyzing bonds, angles, and dihedrals"
     
     # Ensure NDX files are in the correct location
     if [ -d "CG_MARTINI3/NDX" ]; then
@@ -734,7 +792,7 @@ if [ "$SKIP_ANALYSIS" != "true" ]; then
     
 else
     echo ""
-    echo "Step 4/6: Skipping bonds/angles/dihedrals analysis (--skip_analysis)"
+    echo "Step 4/7: Skipping bonds/angles/dihedrals analysis (--skip_analysis)"
 fi
 
 # -----------------------
@@ -743,7 +801,7 @@ fi
 if [ "$RUN_DISTRIBUTIONS" = "true" ] && [ "$SKIP_DISTRIBUTIONS" != "true" ] && [ "$SKIP_ANALYSIS" != "true" ]; then
     
     echo ""
-    echo "Step 5/6: Calculating distribution statistics"
+    echo "Step 5/7: Calculating distribution statistics"
     
     # Change to results directory
     cd "$ORIGINAL_DIR/$OUTPUT_DIR"
@@ -844,15 +902,119 @@ if [ "$RUN_DISTRIBUTIONS" = "true" ] && [ "$SKIP_DISTRIBUTIONS" != "true" ] && [
 else
     if [ "$RUN_DISTRIBUTIONS" = "true" ] && [ "$SKIP_ANALYSIS" = "true" ]; then
         echo ""
-        echo "Step 5/6: Skipping distribution statistics (analysis was skipped)"
+        echo "Step 5/7: Skipping distribution statistics (analysis was skipped)"
     elif [ "$RUN_DISTRIBUTIONS" != "true" ]; then
         echo ""
-        echo "Step 5/6: Skipping distribution statistics (not requested)"
+        echo "Step 5/7: Skipping distribution statistics (not requested)"
     fi
 fi
 
 # -----------------------
-# Cleanup temporary files
+# Step 6: Prepare CG system for simulation (bp_prep.py)
+# -----------------------
+if [ "$SKIP_CG_PREP" != "true" ]; then
+    
+    echo ""
+    echo "Step 6/7: Preparing CG system for simulation (bp_prep.py)"
+    
+    # Set paths for bp_prep.py input files
+    MDRUN_CG_DIR="$OUTPUT_DIR/MDRUN_CG"
+    
+    # Determine input_ref_dir (where GMX files are)
+    INPUT_REF_DIR="$ORIGINAL_DIR/$OUTPUT_DIR/GMX"
+    
+    # Check if required files exist in GMX directory
+    if [ ! -f "$INPUT_REF_DIR/cg.gro" ]; then
+        echo "  ✗ Error: cg.gro not found in $INPUT_REF_DIR"
+        echo "  Skipping CG system preparation"
+    elif [ ! -f "$INPUT_REF_DIR/cg.itp" ]; then
+        echo "  ✗ Error: cg.itp not found in $INPUT_REF_DIR"
+        echo "  Skipping CG system preparation"
+    elif [ ! -f "$INPUT_REF_DIR/topol_cg.top" ] && [ ! -f "$INPUT_REF_DIR/$OUTPUT_TOPOL" ]; then
+        echo "  ✗ Error: Topology file not found in $INPUT_REF_DIR"
+        echo "  Skipping CG system preparation"
+    else
+        # Find topology file
+        if [ -f "$INPUT_REF_DIR/topol_cg.top" ]; then
+            TOPOL_FILE="topol_cg.top"
+        else
+            TOPOL_FILE="$OUTPUT_TOPOL"
+        fi
+        
+        # Build bp_prep.py command
+        BP_PREP_CMD="python $SCRIPT_DIR/../bp_prep.py"
+        
+        # Essential arguments
+        BP_PREP_CMD="$BP_PREP_CMD --input_ref_dir $INPUT_REF_DIR"
+        BP_PREP_CMD="$BP_PREP_CMD --input_gro cg.gro"
+        BP_PREP_CMD="$BP_PREP_CMD --input_itp cg.itp"
+        BP_PREP_CMD="$BP_PREP_CMD --input_topol $TOPOL_FILE"
+        BP_PREP_CMD="$BP_PREP_CMD --output_dir $MDRUN_CG_DIR"
+        
+        # Force field files
+        BP_PREP_CMD="$BP_PREP_CMD --ff $FF"
+        BP_PREP_CMD="$BP_PREP_CMD --ions $IONS"
+        BP_PREP_CMD="$BP_PREP_CMD --solvent $SOLVENT"
+        
+        # Path to ff_files (use the provided path_ff)
+        if [ -n "$PATH_FF_ABS" ]; then
+            BP_PREP_CMD="$BP_PREP_CMD --input_ff_dir $PATH_FF_ABS"
+        fi
+        
+        # Water file
+        if [ -n "$CG_PREP_WATER_DIR" ]; then
+            BP_PREP_CMD="$BP_PREP_CMD --water_dir $CG_PREP_WATER_DIR"
+        fi
+        BP_PREP_CMD="$BP_PREP_CMD --water_file_gro $CG_PREP_WATER_GRO"
+        
+        # Ions MDP
+        if [ -n "$CG_PREP_IONS_MDP_DIR" ]; then
+            BP_PREP_CMD="$BP_PREP_CMD --ions_mdp_dir $CG_PREP_IONS_MDP_DIR"
+        fi
+        BP_PREP_CMD="$BP_PREP_CMD --ions_file_mdp $CG_PREP_IONS_MDP_FILE"
+        
+        # Minimization MDP
+        BP_PREP_CMD="$BP_PREP_CMD --input_name_file_mdp $CG_PREP_MIN_MDP_FILE"
+        
+        # Box definition
+        if [ "$CG_PREP_USE_DISTANCE" = "true" ]; then
+            BP_PREP_CMD="$BP_PREP_CMD --use_distance_from_atom"
+            BP_PREP_CMD="$BP_PREP_CMD --distance_from_atom $CG_PREP_DISTANCE"
+        elif [ -n "$CG_PREP_BOX_SIZE" ]; then
+            BP_PREP_CMD="$BP_PREP_CMD --box_size $CG_PREP_BOX_SIZE"
+        fi
+        
+        # Solvation parameters
+        if [ -n "$CG_PREP_MAX_SOLVENT" ]; then
+            BP_PREP_CMD="$BP_PREP_CMD --max_solvent $CG_PREP_MAX_SOLVENT"
+        fi
+        
+        # Salt concentration
+        BP_PREP_CMD="$BP_PREP_CMD --salt $CG_PREP_SALT"
+        
+        # Verbose mode
+        if [ "$VERBOSE" = "true" ]; then
+            BP_PREP_CMD="$BP_PREP_CMD --verbose"
+        fi
+        
+        echo "  Running: $BP_PREP_CMD"
+        eval $BP_PREP_CMD
+        
+        if [ $? -eq 0 ]; then
+            echo "  ✓ CG system preparation completed successfully"
+            echo "    Output in: $MDRUN_CG_DIR/"
+        else
+            echo "  ✗ CG system preparation failed"
+        fi
+    fi
+    
+else
+    echo ""
+    echo "Step 6/7: Skipping CG system preparation (--skip_cg_prep)"
+fi
+
+# -----------------------
+# Step 7: Cleanup temporary files
 # -----------------------
 if [ "$KEEP_TEMP" != "true" ]; then
     log_verbose "Cleaning up temporary files..."
@@ -928,6 +1090,20 @@ Statistics files (STATISTICS/):
 EOF
 fi
 
+# Add CG preparation section
+if [ "$SKIP_CG_PREP" != "true" ]; then
+    cat >> "$OUTPUT_DIR/SUMMARY.txt" << EOF
+
+CG System for Simulation (MDRUN_CG/):
+  - solv_ions_CG.gro  Solvated and neutralized system
+  - topol_cg.top      Updated topology with ions
+  - em.tpr            Energy minimization input
+  - ff_files/         Martini force field parameters
+  - mdp/              MDP files for simulation
+
+EOF
+fi
+
 echo "✓ Summary saved in: $OUTPUT_DIR/SUMMARY.txt"
 cd "$ORIGINAL_DIR"
 
@@ -944,7 +1120,14 @@ echo "To view results:"
 echo "  cd $OUTPUT_DIR"
 echo "  cat SUMMARY.txt"
 echo ""
+if [ "$SKIP_CG_PREP" != "true" ]; then
+    echo "CG system ready for simulation in: $OUTPUT_DIR/MDRUN_CG/"
+    echo "To run energy minimization:"
+    echo "  cd $OUTPUT_DIR/MDRUN_CG"
+    echo "  gmx mdrun -deffnm em -v"
+fi
 if [ "$RUN_DISTRIBUTIONS" = "true" ] && [ "$SKIP_ANALYSIS" != "true" ]; then
+    echo ""
     echo "Statistics available in: $OUTPUT_DIR/$DIST_OUTPUT_DIR/"
     echo "  - bond_statistics.tsv"
     echo "  - angle_statistics.tsv"

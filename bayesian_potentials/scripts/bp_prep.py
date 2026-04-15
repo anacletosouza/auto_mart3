@@ -1,6 +1,22 @@
 #!/usr/bin/env python3
 """
-Pipeline for CG system preparation and charge neutralization
+Pipeline for CG system preparation using GROMACS with Martini 3 parameters
+
+This script prepares a coarse-grained (CG) system for molecular dynamics simulations
+using the Martini 3 force field. It handles box definition, solvation with water beads,
+ion addition for neutralization and salt concentration, and prepares the system for
+energy minimization.
+
+The workflow follows best practices for Martini CG simulations:
+1. Center the molecule in the simulation box
+2. Define box size based on user specifications (distance from atom, fixed size, or padding)
+3. Solvate the system with water beads using Martini-specific parameters
+4. Add ions to neutralize the system and achieve desired salt concentration
+5. Prepare the topology file with correct include paths
+6. Run grompp to create the input file for energy minimization
+
+Author: CG Pipeline
+Version: 2.0 (GROMACS-based with Martini 3 support)
 """
 
 import argparse
@@ -11,66 +27,159 @@ import re
 from pathlib import Path
 
 def parse_arguments():
-    """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description='CG system preparation pipeline')
+    """Parse command line arguments for the CG system preparation pipeline"""
+    parser = argparse.ArgumentParser(
+        description='CG system preparation pipeline using GROMACS with Martini 3 parameters',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+EXAMPLES:
+  # Basic usage with distance from atom (1.2 nm is standard for Martini)
+  python3 bp-prep.py --use_distance_from_atom --distance_from_atom 1.2
+  
+  # Fixed box size of 12 nm cubic
+  python3 bp-prep.py --box_size 12.0
+  
+  # With maximum solvent limit (like Martini tutorial)
+  python3 bp-prep.py --use_distance_from_atom --max_solvent 768 --solvent_radius 0.21
+  
+  # Using custom force field file names
+  python3 bp-prep.py --ff martini_v3.0.0_custom.itp --ions martini_ions.itp
+  
+  # Complete example with all parameters
+  python3 bp-prep.py \\
+    --input_ref_dir /path/to/input \\
+    --input_gro cg.gro \\
+    --input_itp cg.itp \\
+    --input_topol topol_cg.top \\
+    --input_ff_dir /path/to/ff_files \\
+    --ff martini_v3.0.0.itp \\
+    --ions martini_v3.0.0_ions_v1.itp \\
+    --solvent martini_v3.0.0_solvents_v1.itp \\
+    --output_dir /path/to/output \\
+    --water_dir /path/to/water \\
+    --water_file_gro water.gro \\
+    --use_distance_from_atom \\
+    --distance_from_atom 1.2 \\
+    --solvent_radius 0.21 \\
+    --max_solvent 768 \\
+    --salt 0.15
+        """
+    )
     
+    # Input/Output paths
     parser.add_argument('--input_ref_dir', 
                         default='/home/anacleto/projects/github/AA_TO_PARAMETRIZATION_CARB/MDRUN/A2/results_A2/GMX',
-                        help='Directory containing input files')
+                        help='Directory containing input files (GRO, ITP, TOP)')
     
     parser.add_argument('--input_gro', default='cg.gro',
-                        help='Input GRO filename')
+                        help='Input GRO filename containing CG coordinates')
     
     parser.add_argument('--input_itp', default='cg.itp',
-                        help='Input ITP filename')
+                        help='Input ITP filename with CG topology parameters')
     
     parser.add_argument('--input_topol', default='topol_cg.top',
                         help='Input topology filename')
     
-    parser.add_argument('--input_ff_dir', default='ff_files/',
-                        help='Force field directory')
+    parser.add_argument('--input_ff_dir', default=None,
+                        help='Directory containing force field files (.itp). If not specified, '
+                             'will look in input_ref_dir/ff_files or current directory/ff_files')
+    
+    # Force field file names (flexible)
+    parser.add_argument('--ff', default='martini_v3.0.0.itp',
+                        help='Force field ITP filename (default: martini_v3.0.0.itp)')
+    
+    parser.add_argument('--ions', default='martini_v3.0.0_ions_v1.itp',
+                        help='Ions ITP filename (default: martini_v3.0.0_ions_v1.itp)')
+    
+    parser.add_argument('--solvent', default='martini_v3.0.0_solvents_v1.itp',
+                        help='Solvent ITP filename (default: martini_v3.0.0_solvents_v1.itp)')
     
     parser.add_argument('--output_dir', 
                         default='/home/anacleto/projects/github/AA_TO_PARAMETRIZATION_CARB/MDRUN/A2/results_A2/OPTIMIZATION_OF_POTENTIALS/ITER_0',
-                        help='Output directory')
+                        help='Output directory for final system files')
     
+    # MDP files
     parser.add_argument('--input_mdp_dir', default='../../../../mdp/',
-                        help='MDP files directory')
+                        help='Directory containing MDP parameter files')
     
     parser.add_argument('--input_name_file_mdp', default='minimization.mdp',
-                        help='MDP filename')
+                        help='MDP filename for energy minimization')
     
-    parser.add_argument('--pbc', default='cubic',
-                        help='PBC type (cubic, rectangular, etc.)')
+    # Water parameters
+    parser.add_argument('--water_dir', 
+                        default='/home/anacleto/projects/github/bayesian_potentials/data/gro_files',
+                        help='Directory containing water bead GRO file')
     
-    parser.add_argument('--sol', default='W',
-                        help='Solvent type')
+    parser.add_argument('--water_file_gro', default='water.gro',
+                        help='Water GRO filename (single bead representation for Martini)')
+    
+    # Ion parameters
+    parser.add_argument('--ions_mdp_dir',
+                        default='/home/anacleto/projects/github/bayesian_potentials/data/mdp',
+                        help='Directory containing MDP files for ion addition')
+    
+    parser.add_argument('--ions_file_mdp', default='ions.mdp',
+                        help='MDP filename for ion addition step')
     
     parser.add_argument('--salt', type=float, default=0.15,
-                        help='Salt concentration (M)')
+                        help='Salt concentration in Molar (default: 0.15 M, typical physiological)')
+    
+    # Box and solvation parameters
+    parser.add_argument('--distance_from_atom', type=float, default=1.2,
+                        help='Distance in nm from the molecule to add solvent (default: 1.2 nm, standard for Martini)')
+    
+    parser.add_argument('--use_distance_from_atom', action='store_true',
+                        help='Use distance_from_atom to calculate box size (recommended for Martini)')
+    
+    parser.add_argument('--box_size', type=float, default=None,
+                        help='Fixed box size in nm (overrides distance_from_atom if set)')
+    
+    parser.add_argument('--max_solvent', type=int, default=None,
+                        help='Maximum number of solvent molecules to add (maxsol flag in gmx solvate). '
+                             'Useful for controlling system size, e.g., 768 for Martini tutorials')
+    
+    parser.add_argument('--solvent_radius', type=float, default=0.21,
+                        help='Radius of solvent beads in nm for Martini CG (default: 0.21 nm, standard Martini bead size)')
     
     return parser.parse_args()
 
 def setup_directories(output_dir):
-    """Create output directory and temp directory"""
+    """
+    Create output directory and temporary working directory
+    
+    Args:
+        output_dir (str): Path to output directory
+        
+    Returns:
+        tuple: (output_path, temp_dir) as Path objects
+    """
     output_path = Path(output_dir).resolve()
     output_path.mkdir(parents=True, exist_ok=True)
     
-    # Create temp directory for manipulations
+    # Create temp directory for intermediate manipulations
     temp_dir = output_path / "temp_work"
     temp_dir.mkdir(exist_ok=True)
     
     return output_path, temp_dir
 
 def copy_files_to_temp(args, temp_dir):
-    """Copy necessary files to temp directory"""
+    """
+    Copy necessary input files to temporary working directory
+    
+    Args:
+        args: Command line arguments
+        temp_dir (Path): Temporary directory path
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
     ref_source = Path(args.input_ref_dir).resolve()
     
     if not ref_source.exists():
         print(f"Error: {ref_source} not found")
         return False
     
-    # Copy specific files from input_ref_dir
+    # Copy CG system files
     files_to_copy = [args.input_gro, args.input_itp, args.input_topol]
     for filename in files_to_copy:
         src = ref_source / filename
@@ -80,30 +189,78 @@ def copy_files_to_temp(args, temp_dir):
         else:
             print(f"Warning: {src} not found")
     
+    # Copy water bead file
+    water_source = Path(args.water_dir).resolve() / args.water_file_gro
+    if water_source.exists():
+        shutil.copy2(water_source, temp_dir / 'water.gro')
+        print(f"Copied water file {water_source} to {temp_dir / 'water.gro'}")
+    else:
+        print(f"Error: Water file {water_source} not found")
+        return False
+    
     return True
 
 def copy_ff_and_mdp_to_output(args, output_dir, temp_dir):
-    """Copy ff_files and mdp directories to output directory and temp directory"""
-    # Copy force field directory
-    ff_source = Path(args.input_ff_dir).resolve() if args.input_ff_dir else None
+    """
+    Copy force field and MDP files to output and temporary directories
+    
+    Args:
+        args: Command line arguments
+        output_dir (Path): Output directory path
+        temp_dir (Path): Temporary directory path
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    # Locate ff_files directory in multiple possible locations
+    ff_source = None
+    
+    # Check user-specified location
+    if args.input_ff_dir:
+        ff_source = Path(args.input_ff_dir).resolve()
+        if not ff_source.exists():
+            print(f"Warning: {ff_source} not found")
+            ff_source = None
+    
+    # Check input reference directory
+    if not ff_source:
+        ff_source = Path(args.input_ref_dir).resolve() / 'ff_files'
+        if ff_source.exists():
+            print(f"Found ff_files in {ff_source}")
+    
+    # Check current working directory
+    if not ff_source or not ff_source.exists():
+        ff_source = Path.cwd() / 'ff_files'
+        if ff_source.exists():
+            print(f"Found ff_files in {ff_source}")
+    
     if ff_source and ff_source.exists():
-        # Copy to output_dir
+        # Copy to output directory
         ff_dest = output_dir / "ff_files"
         if ff_dest.exists():
             shutil.rmtree(ff_dest)
         shutil.copytree(ff_source, ff_dest)
         print(f"\nCopied force field directory to {ff_dest}")
         
-        # Also copy to temp_dir for grompp
+        # Copy to temp directory for grompp
         ff_temp_dest = temp_dir / "ff_files"
         if ff_temp_dest.exists():
             shutil.rmtree(ff_temp_dest)
         shutil.copytree(ff_source, ff_temp_dest)
         print(f"Copied force field directory to {ff_temp_dest}")
+        
+        # Verify required force field files exist
+        ff_files_required = [args.ff, args.ions, args.solvent]
+        for ff_file in ff_files_required:
+            if not (ff_temp_dest / ff_file).exists():
+                print(f"Warning: {ff_file} not found in {ff_temp_dest}")
+                print(f"  Please ensure the file exists or specify correct names with --ff, --ions, --solvent")
     else:
-        print(f"\nWarning: {args.input_ff_dir} not found")
+        print(f"\nERROR: Could not find ff_files directory!")
+        print(f"Please ensure ff_files directory exists with Martini .itp files")
+        return False
     
-    # Copy mdp directory
+    # Copy MDP directory for minimization
     mdp_source = Path(args.input_mdp_dir).resolve()
     if mdp_source.exists():
         mdp_dest = output_dir / "mdp"
@@ -111,370 +268,544 @@ def copy_ff_and_mdp_to_output(args, output_dir, temp_dir):
             shutil.rmtree(mdp_dest)
         shutil.copytree(mdp_source, mdp_dest)
         print(f"Copied mdp directory to {mdp_dest}")
+        
+        # Copy minimization MDP to temp
+        min_mdp = mdp_source / args.input_name_file_mdp
+        if min_mdp.exists():
+            shutil.copy2(min_mdp, temp_dir / 'minimization.mdp')
+            print(f"Copied {min_mdp} to {temp_dir / 'minimization.mdp'}")
     else:
         print(f"Warning: {args.input_mdp_dir} not found")
     
+    # Copy or create ions MDP
+    ions_mdp_source = Path(args.ions_mdp_dir).resolve()
+    if ions_mdp_source.exists():
+        ions_mdp_dest = output_dir / "ions_mdp"
+        if ions_mdp_dest.exists():
+            shutil.rmtree(ions_mdp_dest)
+        shutil.copytree(ions_mdp_source, ions_mdp_dest)
+        print(f"Copied ions mdp directory to {ions_mdp_dest}")
+        
+        ions_mdp_file = ions_mdp_source / args.ions_file_mdp
+        if ions_mdp_file.exists():
+            shutil.copy2(ions_mdp_file, temp_dir / 'ions.mdp')
+            print(f"Copied {ions_mdp_file} to {temp_dir / 'ions.mdp'}")
+    else:
+        print(f"Warning: {args.ions_mdp_dir} not found")
+        # Create default ions.mdp
+        with open(temp_dir / 'ions.mdp', 'w') as f:
+            f.write("""; ions.mdp - used for adding ions
+integrator = steep
+nsteps = 0
+nstlist = 10
+cutoff-scheme = Verlet
+coulombtype = PME
+rcoulomb = 1.2
+rvdw = 1.2
+pbc = xyz
+emtol = 1000.0
+emstep = 0.01
+""")
+        print(f"Created default ions.mdp in {temp_dir}")
+    
     return True
 
-def run_insane(args, temp_dir):
-    """Run insane command in temp directory"""
-    gro_file = temp_dir / args.input_gro
+def get_molecule_extent(gro_file):
+    """
+    Get minimum and maximum coordinates of molecule from GRO file
     
-    if not gro_file.exists():
-        print(f"Error: {gro_file} not found")
-        return None
-    
-    cmd = [
-        'insane',
-        '-f', args.input_gro,
-        '-o', 'solv_ions_CG.gro',
-        '-p', 'system.top',
-        '-pbc', args.pbc,
-        '-sol', args.sol,
-        '-salt', str(args.salt)
-    ]
-    
-    print(f"\nRunning insane in {temp_dir}:")
-    print(f"  {' '.join(cmd)}")
-    
-    result = subprocess.run(cmd, cwd=temp_dir, capture_output=True, text=True)
-    
-    if result.returncode != 0:
-        print(f"Error running insane: {result.stderr}")
-        return None
-    
-    print("insane completed successfully")
-    return result
-
-def parse_system_top(temp_dir):
-    """Parse system.top to get ion counts"""
-    system_top = temp_dir / 'system.top'
-    if not system_top.exists():
-        print(f"Error: {system_top} not found")
-        return None, None, None
-    
-    w_count = None
-    na_count = None
-    cl_count = None
-    
-    with open(system_top, 'r') as f:
-        for line in f:
-            if line.startswith('W') and not line.startswith(';'):
-                parts = line.split()
-                if len(parts) >= 2:
-                    w_count = int(parts[1])
-            elif line.startswith('NA+') and not line.startswith(';'):
-                parts = line.split()
-                if len(parts) >= 2:
-                    na_count = int(parts[1])
-            elif line.startswith('CL-') and not line.startswith(';'):
-                parts = line.split()
-                if len(parts) >= 2:
-                    cl_count = int(parts[1])
-    
-    return w_count, na_count, cl_count
-
-def fix_gro_format(line):
-    """Fix GRO format - ensure proper column alignment"""
-    # GRO format: 
-    # Columns 0-4: residue number (5 digits, right-aligned)
-    # Columns 5-9: residue name (5 chars, left-aligned)
-    # Columns 10-14: atom name (5 chars, left-aligned)
-    # Columns 15-19: atom number (5 digits, right-aligned)
-    # Columns 20-27: X coordinate (8.3f)
-    # Columns 28-35: Y coordinate (8.3f)
-    # Columns 36-43: Z coordinate (8.3f)
-    
-    # If line is too short, return as is
-    if len(line) < 44:
-        return line
-    
-    # Parse the line components
-    try:
-        # Extract residue number (first 5 chars)
-        res_num = line[0:5].strip()
-        if not res_num:
-            res_num = "0"
+    Args:
+        gro_file (Path): Path to GRO file
         
-        # Extract residue name (next 5 chars)
-        res_name = line[5:10].strip()
-        
-        # Extract atom name (next 5 chars)
-        atom_name = line[10:15].strip()
-        
-        # Extract atom number (next 5 chars)
-        atom_num = line[15:20].strip()
-        if not atom_num:
-            atom_num = "0"
-        
-        # Extract coordinates
-        x = line[20:28].strip()
-        y = line[28:36].strip()
-        z = line[36:44].strip()
-        
-        # Standardize ion names
-        if res_name in ['NA+', 'Na+', 'Na', 'NA']:
-            res_name = 'NA'
-        if res_name in ['CL-', 'Cl-', 'Cl', 'CL']:
-            res_name = 'CL'
-        
-        if atom_name in ['NA+', 'Na+', 'Na', 'NA']:
-            atom_name = 'NA'
-        if atom_name in ['CL-', 'Cl-', 'Cl', 'CL']:
-            atom_name = 'CL'
-        
-        # Rebuild line with proper formatting
-        new_line = f"{int(res_num):5d}{res_name:5s}{atom_name:5s}{int(atom_num):5d}{float(x):8.3f}{float(y):8.3f}{float(z):8.3f}"
-        
-        # Ensure line has exactly the right length
-        if len(new_line) < 44:
-            new_line = new_line.ljust(44)
-        
-        return new_line
-    
-    except (ValueError, IndexError):
-        # If parsing fails, return original line
-        return line
-
-def standardize_gro_file(temp_dir):
-    """Completely standardize GRO file with proper formatting"""
-    gro_file = temp_dir / 'solv_ions_CG.gro'
-    
-    if not gro_file.exists():
-        print(f"Error: {gro_file} not found")
-        return False
-    
-    # Create backup
-    backup_file = temp_dir / 'solv_ions_CG.gro.backup'
-    shutil.copy2(gro_file, backup_file)
-    
+    Returns:
+        tuple: (min_coord, max_coord) as tuples of (x,y,z) or (None, None) if error
+    """
     with open(gro_file, 'r') as f:
         lines = f.readlines()
     
     if len(lines) < 3:
-        print(f"Error: {gro_file} has invalid format")
-        return False
+        return None, None
     
-    header = lines[0].rstrip('\n')
     num_atoms = int(lines[1].strip())
-    atom_lines = lines[2:2+num_atoms]
-    box_line = lines[2+num_atoms].rstrip('\n') if len(lines) > 2+num_atoms else ''
+    coords = []
     
-    # Fix each atom line
-    fixed_lines = []
-    modified = 0
+    for line in lines[2:2+num_atoms]:
+        if len(line) >= 44:
+            try:
+                x = float(line[20:28])
+                y = float(line[28:36])
+                z = float(line[36:44])
+                coords.append((x, y, z))
+            except ValueError:
+                pass
     
-    for i, line in enumerate(atom_lines):
-        original = line.rstrip('\n')
-        fixed = fix_gro_format(original)
-        fixed_lines.append(fixed + '\n')
-        if original != fixed:
-            modified += 1
-            print(f"  Fixed line {i+1}: {original[:20]}... -> {fixed[:20]}...")
+    if not coords:
+        return None, None
     
-    # Write fixed gro file
-    with open(gro_file, 'w') as f:
-        f.write(f"{header}\n")
-        f.write(f"{num_atoms:5d}\n")
-        f.writelines(fixed_lines)
-        if box_line:
-            f.write(f"{box_line}\n")
+    xs = [c[0] for c in coords]
+    ys = [c[1] for c in coords]
+    zs = [c[2] for c in coords]
     
-    print(f"\nFixed {modified} lines in {gro_file}")
-    return True
+    min_coord = (min(xs), min(ys), min(zs))
+    max_coord = (max(xs), max(ys), max(zs))
+    
+    return min_coord, max_coord
 
-def parse_charges_from_itp(temp_dir):
-    """Parse charges from cg.itp file"""
-    itp_file = temp_dir / 'cg.itp'
+def center_and_box(temp_dir, args):
+    """
+    Center the molecule in the simulation box and define box size
     
-    if not itp_file.exists():
-        print(f"Error: {itp_file} not found")
-        return 0.0
+    This function performs two critical operations:
+    1. Centers the molecule at the origin using gmx editconf -c
+    2. Defines the box size based on user specifications
     
-    total_charge = 0.0
-    in_atoms = False
-    
-    with open(itp_file, 'r') as f:
-        for line in f:
-            if '[ atoms ]' in line:
-                in_atoms = True
-                continue
-            if in_atoms and '[' in line and 'atoms' not in line:
-                break
-            if in_atoms and line.strip() and not line.strip().startswith(';'):
-                parts = line.split()
-                if len(parts) >= 7:
-                    try:
-                        charge = float(parts[6])
-                        total_charge += charge
-                    except ValueError:
-                        pass
-    
-    print(f"Total charge from ITP: {total_charge:.3f}")
-    return total_charge
-
-def neutralize_system(temp_dir, w_count, na_count, cl_count, total_charge):
-    """Add or remove ions to neutralize the system"""
-    gro_file = temp_dir / 'solv_ions_CG.gro'
+    Args:
+        temp_dir (Path): Temporary directory path
+        args: Command line arguments
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    gro_file = temp_dir / args.input_gro
     
     if not gro_file.exists():
         print(f"Error: {gro_file} not found")
-        return False, 0
+        return False
     
-    # Calculate charge deficit
-    charge_deficit = -total_charge
+    # Step 1: Center the molecule
+    print(f"\nCentering molecule in the box...")
+    cmd_center = ['gmx', 'editconf', '-f', args.input_gro, '-c', '-o', 'centered.gro']
+    print(f"  {' '.join(cmd_center)}")
     
-    if abs(charge_deficit) < 0.01:
-        print("System is already neutral")
-        return True, 0
+    result = subprocess.run(cmd_center, cwd=temp_dir, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"Error centering molecule: {result.stderr}")
+        return False
     
-    # We'll add NA+ ions (charge +1) to neutralize negative charge
-    na_to_add = int(round(abs(charge_deficit)))
+    print("Molecule centered successfully")
     
-    print(f"Need to add {na_to_add} NA+ ions to neutralize (current charge: {total_charge:.3f})")
+    # Step 2: Define box size based on user preference
+    centered_gro = temp_dir / 'centered.gro'
     
-    # Read gro file
+    # Priority: 1. Fixed box size, 2. Distance from atom, 3. Default padding
+    if args.box_size:
+        # Use fixed box size
+        print(f"\nUsing fixed box size: {args.box_size} nm")
+        cmd_box = ['gmx', 'editconf', '-f', 'centered.gro', '-o', 'boxed.gro', 
+                   '-box', str(args.box_size), str(args.box_size), str(args.box_size)]
+    
+    elif args.use_distance_from_atom:
+        # Calculate box based on distance from atoms
+        min_coord, max_coord = get_molecule_extent(centered_gro)
+        
+        if min_coord is None:
+            print("Error: Could not calculate molecule extent")
+            return False
+        
+        # Calculate required box size: distance from farthest atom to edge
+        # For a centered molecule, the farthest distance from origin is max(|min|, |max|)
+        max_distance = max(abs(min_coord[0]), abs(max_coord[0]),
+                          abs(min_coord[1]), abs(max_coord[1]),
+                          abs(min_coord[2]), abs(max_coord[2]))
+        
+        box_size = 2 * (max_distance + args.distance_from_atom)
+        
+        print(f"\nUsing distance from atom: {args.distance_from_atom} nm")
+        print(f"Farthest atom distance from center: {max_distance:.3f} nm")
+        print(f"Calculated box size: {box_size:.3f} nm (cubic)")
+        
+        cmd_box = ['gmx', 'editconf', '-f', 'centered.gro', '-o', 'boxed.gro',
+                   '-box', str(box_size), str(box_size), str(box_size)]
+    
+    else:
+        # Default: use old padding method (backward compatibility)
+        width, height, depth = get_molecule_dimensions(centered_gro)
+        box_x = width + 2 * 1.5  # default 1.5 nm padding
+        box_y = height + 2 * 1.5
+        box_z = depth + 2 * 1.5
+        print(f"\nUsing default padding (1.5 nm)")
+        print(f"Molecule dimensions: {width:.3f} x {height:.3f} x {depth:.3f} nm")
+        print(f"Box size: {box_x:.3f} x {box_y:.3f} x {box_z:.3f} nm")
+        cmd_box = ['gmx', 'editconf', '-f', 'centered.gro', '-o', 'boxed.gro',
+                   '-box', str(box_x), str(box_y), str(box_z)]
+    
+    print(f"\nRunning editconf for box definition:")
+    print(f"  {' '.join(cmd_box)}")
+    
+    result = subprocess.run(cmd_box, cwd=temp_dir, capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        print(f"Error running editconf: {result.stderr}")
+        return False
+    
+    print("Box definition completed successfully")
+    return True
+
+def get_molecule_dimensions(gro_file):
+    """
+    Get dimensions of molecule from GRO file (backward compatibility)
+    
+    Args:
+        gro_file (Path): Path to GRO file
+        
+    Returns:
+        tuple: (width, height, depth) in nm
+    """
     with open(gro_file, 'r') as f:
         lines = f.readlines()
     
-    header = lines[0].rstrip('\n')
+    if len(lines) < 3:
+        return 0.0, 0.0, 0.0
+    
     num_atoms = int(lines[1].strip())
-    atom_lines = lines[2:2+num_atoms]
-    box_line = lines[2+num_atoms].rstrip('\n') if len(lines) > 2+num_atoms else ''
+    coords = []
     
-    # Find water molecules (residue name W)
-    water_indices = []
-    for i, line in enumerate(atom_lines):
-        if len(line) >= 10:
-            residue_name = line[5:10].strip()
-            if residue_name == 'W':
-                water_indices.append(i)
-    
-    print(f"Found {len(water_indices)} water molecules")
-    
-    if na_to_add > len(water_indices):
-        print(f"Warning: Need {na_to_add} NA+ but only {len(water_indices)} water molecules available")
-        na_to_add = len(water_indices)
-    
-    # Replace last N water molecules with NA
-    water_to_replace = water_indices[-na_to_add:]
-    
-    for idx in water_to_replace:
-        line = atom_lines[idx]
-        if len(line) >= 10:
-            # Parse the line
-            res_num = line[0:5].strip()
-            atom_num = line[15:20].strip()
-            x = line[20:28].strip()
-            y = line[28:36].strip()
-            z = line[36:44].strip()
-            
-            # Create new line with NA instead of W
+    for line in lines[2:2+num_atoms]:
+        if len(line) >= 44:
             try:
-                new_line = f"{int(res_num):5d}NA   NA   {int(atom_num):5d}{float(x):8.3f}{float(y):8.3f}{float(z):8.3f}"
-                atom_lines[idx] = new_line + '\n'
-                print(f"  Replaced water molecule at index {idx+1} with NA")
-            except (ValueError, IndexError):
-                print(f"  Warning: Could not parse line {idx+1}")
+                x = float(line[20:28])
+                y = float(line[28:36])
+                z = float(line[36:44])
+                coords.append((x, y, z))
+            except ValueError:
+                pass
     
-    # Write modified gro file
-    with open(gro_file, 'w') as f:
-        f.write(f"{header}\n")
-        f.write(f"{num_atoms:5d}\n")
-        f.writelines(atom_lines)
-        if box_line:
-            f.write(f"{box_line}\n")
+    if not coords:
+        return 0.0, 0.0, 0.0
     
-    print(f"Added {na_to_add} NA+ ions to neutralize system")
-    return True, na_to_add
+    xs = [c[0] for c in coords]
+    ys = [c[1] for c in coords]
+    zs = [c[2] for c in coords]
+    
+    width = max(xs) - min(xs)
+    height = max(ys) - min(ys)
+    depth = max(zs) - min(zs)
+    
+    return width, height, depth
 
-def update_topol_cg(temp_dir, w_count, na_count, cl_count, na_to_add=0):
-    """Update topol_cg.top with correct ion counts"""
+def fix_topology_includes(temp_dir, args):
+    """
+    Fix include paths in topology file to point to ff_files directory
+    
+    Args:
+        temp_dir (Path): Temporary directory path
+        args: Command line arguments with force field file names
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
     topol_file = temp_dir / 'topol_cg.top'
     
     if not topol_file.exists():
         print(f"Error: {topol_file} not found")
         return False
     
-    # Calculate new counts
-    new_w_count = w_count - na_to_add
-    new_na_count = na_count + na_to_add
-    new_cl_count = cl_count
-    
-    print(f"\nUpdating topology counts:")
-    print(f"  W: {w_count} -> {new_w_count}")
-    print(f"  NA: {na_count} -> {new_na_count}")
-    print(f"  CL: {cl_count} -> {new_cl_count}")
-    
-    # Read original content
     with open(topol_file, 'r') as f:
         content = f.read()
     
-    # Replace ion names
-    content = content.replace('NA+', 'NA')
-    content = content.replace('CL-', 'CL')
+    # Update include paths to point to ff_files directory with flexible file names
+    # Replace any include of martini files with the correct ff_files path
+    content = re.sub(r'#include\s+"([^/]*\.itp)"', r'#include "ff_files/\1"', content)
+    content = re.sub(r'#include\s+"([^"]*martini[^"]*\.itp)"', r'#include "ff_files/\1"', content)
+    content = re.sub(r'#include\s+"\.\./ff_files/', '#include "ff_files/', content)
     
-    # Update include paths
-    content = re.sub(r'#include\s+"[^"]*martini_v3\.0\.0\.itp"', '#include "ff_files/martini_v3.0.0.itp"', content)
-    content = re.sub(r'#include\s+"[^"]*martini_v3\.0\.0_ions_v1\.itp"', '#include "ff_files/martini_v3.0.0_ions_v1.itp"', content)
-    content = re.sub(r'#include\s+"[^"]*martini_v3\.0\.0_solvents_v1\.itp"', '#include "ff_files/martini_v3.0.0_solvents_v1.itp"', content)
-    content = re.sub(r'#include\s+"[^"]*cg\.itp"', '#include "cg.itp"', content)
+    # Ensure cg.itp is included from current directory
+    content = re.sub(r'#include\s+"ff_files/cg\.itp"', '#include "cg.itp"', content)
+    content = re.sub(r'#include\s+"\.\./cg\.itp"', '#include "cg.itp"', content)
     
-    # Find and update [ molecules ] section
+    with open(topol_file, 'w') as f:
+        f.write(content)
+    
+    print(f"Fixed include paths in {topol_file}")
+    return True
+
+def solvate_box(temp_dir, args):
+    """
+    Solvate the box with water beads using Martini parameters
+    
+    This function uses gmx solvate with Martini-specific parameters:
+    - -radius: Size of CG beads (0.21 nm for Martini)
+    - -maxsol: Optional maximum number of solvent molecules
+    
+    Args:
+        temp_dir (Path): Temporary directory path
+        args: Command line arguments
+        
+    Returns:
+        int: Number of water molecules added, or None if error
+    """
+    # Fix topology includes
+    fix_topology_includes(temp_dir, args)
+    
+    # Create a clean topology for solvation (only solute)
+    topol_file = temp_dir / 'topol_cg.top'
+    
+    # Backup original topology
+    shutil.copy2(topol_file, temp_dir / 'topol_cg.top.backup')
+    
+    # Find molecule name from topology
+    with open(topol_file, 'r') as f:
+        content = f.read()
+    
+    molecule_name = "molecule"
     lines = content.split('\n')
-    new_lines = []
     in_molecules = False
-    molecules_section_found = False
     
     for line in lines:
         if '[ molecules ]' in line:
             in_molecules = True
-            molecules_section_found = True
-            new_lines.append(line)
-            new_lines.append('; Compound        #mols')
-            new_lines.append(f'molecule               1')
-            new_lines.append(f'W              {new_w_count}')
-            new_lines.append(f'NA               {new_na_count}')
-            new_lines.append(f'CL               {new_cl_count}')
             continue
+        if in_molecules and line.strip() and not line.strip().startswith(';'):
+            parts = line.split()
+            if len(parts) >= 1:
+                molecule_name = parts[0]
+                break
+    
+    print(f"Found molecule name: {molecule_name}")
+    
+    # Create temp topology for solvation using flexible force field file names
+    temp_topol = temp_dir / 'topol_solvate.top'
+    with open(temp_topol, 'w') as f:
+        f.write(f'#include "ff_files/{args.ff}"\n')
+        f.write(f'#include "cg.itp"\n')
+        f.write(f'\n[ system ]\n')
+        f.write(f'; System name\n')
+        f.write(f'Solvation system\n')
+        f.write(f'\n[ molecules ]\n')
+        f.write(f'; Compound        #mols\n')
+        f.write(f'{molecule_name}               1\n')
+    
+    # Build solvation command with Martini parameters
+    cmd = ['gmx', 'solvate', '-cp', 'boxed.gro', '-cs', 'water.gro',
+           '-o', 'solvated.gro', '-p', 'topol_solvate.top',
+           '-radius', str(args.solvent_radius)]
+    
+    # Add maxsol if specified (useful for controlling system size)
+    if args.max_solvent:
+        cmd.extend(['-maxsol', str(args.max_solvent)])
+        print(f"Limiting to maximum {args.max_solvent} solvent molecules")
+    
+    print(f"\nRunning solvation with Martini parameters:")
+    print(f"  Solvent radius: {args.solvent_radius} nm")
+    print(f"  {' '.join(cmd)}")
+    
+    result = subprocess.run(cmd, cwd=temp_dir, capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        print(f"Error running solvate: {result.stderr}")
+        return None
+    
+    print("Solvation completed successfully")
+    
+    # Parse water count from solvated topology
+    with open(temp_topol, 'r') as f:
+        solvated_content = f.read()
+    
+    w_count = 0
+    in_molecules = False
+    for line in solvated_content.split('\n'):
+        if '[ molecules ]' in line:
+            in_molecules = True
+            continue
+        if in_molecules and line.strip() and not line.strip().startswith(';'):
+            parts = line.split()
+            if len(parts) >= 2 and parts[0] == 'W':
+                w_count = int(parts[1])
+                break
+    
+    print(f"Added {w_count} water molecules")
+    
+    # Rename solvated gro file for next steps
+    shutil.move(temp_dir / 'solvated.gro', temp_dir / 'solvated_temp.gro')
+    
+    return w_count
+
+def add_ions_gromacs(temp_dir, args, w_count):
+    """
+    Add ions using GROMACS genion for neutralization and salt concentration
+    
+    This function:
+    1. Creates a temporary topology with solute and water
+    2. Runs grompp to prepare the tpr file
+    3. Uses genion to replace water molecules with NA+ and CL- ions
+    
+    Args:
+        temp_dir (Path): Temporary directory path
+        args: Command line arguments
+        w_count (int): Number of water molecules before ion addition
         
-        if in_molecules:
-            # Skip old molecule lines
-            if line.strip() and not line.strip().startswith(';') and not '[' in line:
+    Returns:
+        tuple: (new_w_count, na_count, cl_count) or False if error
+    """
+    # Read original topology to find molecule name
+    topol_file = temp_dir / 'topol_cg.top'
+    
+    with open(topol_file, 'r') as f:
+        content = f.read()
+    
+    # Find molecule name
+    in_molecules = False
+    molecule_name = "molecule"
+    for line in content.split('\n'):
+        if '[ molecules ]' in line:
+            in_molecules = True
+            continue
+        if in_molecules and line.strip() and not line.strip().startswith(';'):
+            parts = line.split()
+            if len(parts) >= 1:
+                molecule_name = parts[0]
+                break
+    
+    # Create a temporary topology with solute and water using flexible file names
+    temp_topol = temp_dir / 'topol_ions.top'
+    with open(temp_topol, 'w') as f:
+        f.write('; Topology for ion addition\n')
+        f.write(f'#include "ff_files/{args.ff}"\n')
+        f.write(f'#include "ff_files/{args.ions}"\n')
+        f.write(f'#include "ff_files/{args.solvent}"\n')
+        f.write('#include "cg.itp"\n\n')
+        
+        f.write('[ system ]\n')
+        f.write('; System name\n')
+        f.write('CG system with water\n\n')
+        
+        f.write('[ molecules ]\n')
+        f.write('; Compound        #mols\n')
+        f.write(f'{molecule_name}               1\n')
+        f.write(f'W              {w_count}\n')
+    
+    # Run grompp to prepare tpr for ion addition
+    ions_mdp = temp_dir / 'ions.mdp'
+    
+    cmd_grompp = ['gmx', 'grompp', '-f', 'ions.mdp', '-c', 'solvated_temp.gro',
+                  '-p', 'topol_ions.top', '-o', 'ions.tpr', '-maxwarn', '2']
+    
+    print(f"\nRunning grompp for ion addition:")
+    print(f"  {' '.join(cmd_grompp)}")
+    
+    # Set GMXLIB environment variable for force field location
+    env = os.environ.copy()
+    ff_path = temp_dir / 'ff_files'
+    if ff_path.exists():
+        env['GMXLIB'] = str(ff_path)
+        print(f"Set GMXLIB={env['GMXLIB']}")
+    
+    result = subprocess.run(cmd_grompp, cwd=temp_dir, env=env, capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        print(f"Error running grompp: {result.stderr}")
+        print(f"stdout: {result.stdout}")
+        return False
+    
+    # Run genion to add ions
+    # Input: Select water group (typically group 'W') for replacement
+    genion_input = "W\n"
+    
+    cmd_genion = ['gmx', 'genion', '-s', 'ions.tpr', '-o', 'solv_ions_CG.gro',
+                  '-p', 'topol_ions.top', '-pname', 'NA', '-nname', 'CL',
+                  '-neutral', '-conc', str(args.salt)]
+    
+    print(f"\nRunning genion to add {args.salt} M salt:")
+    print(f"  {' '.join(cmd_genion)}")
+    
+    result = subprocess.run(cmd_genion, cwd=temp_dir, input=genion_input,
+                           capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        print(f"Error running genion: {result.stderr}")
+        print(f"stdout: {result.stdout}")
+        return False
+    
+    print("Ions added successfully")
+    
+    # Parse ion counts from output topology
+    na_count = 0
+    cl_count = 0
+    new_w_count = 0
+    
+    with open(temp_dir / 'topol_ions.top', 'r') as f:
+        in_molecules = False
+        for line in f:
+            if '[ molecules ]' in line:
+                in_molecules = True
                 continue
-            if '[' in line and line.strip() != '[ molecules ]':
-                in_molecules = False
-                new_lines.append(line)
-        else:
-            new_lines.append(line)
+            if in_molecules and line.strip() and not line.strip().startswith(';'):
+                parts = line.split()
+                if len(parts) >= 2:
+                    if parts[0] == 'W':
+                        new_w_count = int(parts[1])
+                    elif parts[0] == 'NA':
+                        na_count = int(parts[1])
+                    elif parts[0] == 'CL':
+                        cl_count = int(parts[1])
     
-    if not molecules_section_found:
-        # Append molecules section at the end
-        new_lines.append('')
-        new_lines.append('[ molecules ]')
-        new_lines.append('; Compound        #mols')
-        new_lines.append(f'molecule               1')
-        new_lines.append(f'W              {new_w_count}')
-        new_lines.append(f'NA               {new_na_count}')
-        new_lines.append(f'CL               {new_cl_count}')
+    # Copy the final topology to topol_cg.top
+    shutil.copy2(temp_dir / 'topol_ions.top', temp_dir / 'topol_cg.top')
     
-    # Write updated topology
-    with open(topol_file, 'w') as f:
-        f.write('\n'.join(new_lines))
+    return new_w_count, na_count, cl_count
+
+def update_topol_for_simulation(temp_dir, w_count, na_count, cl_count):
+    """
+    Final update of topology file for simulation (report only)
     
-    print(f"\nUpdated {topol_file}")
+    Args:
+        temp_dir (Path): Temporary directory path
+        w_count (int): Final water molecule count
+        na_count (int): Sodium ion count
+        cl_count (int): Chloride ion count
+        
+    Returns:
+        bool: True if successful
+    """
+    topol_file = temp_dir / 'topol_cg.top'
+    
+    if not topol_file.exists():
+        print(f"Error: {topol_file} not found")
+        return False
+    
+    print(f"\nFinal topology counts:")
+    print(f"  Water molecules: {w_count}")
+    print(f"  NA+ ions: {na_count}")
+    print(f"  CL- ions: {cl_count}")
+    
     return True
 
-def run_grompp(args, temp_dir, output_dir):
-    """Run grompp for energy minimization"""
-    mdp_file = output_dir / "mdp" / args.input_name_file_mdp
+def run_grompp_minimization(args, temp_dir, output_dir):
+    """
+    Run grompp to prepare energy minimization input file
+    
+    Args:
+        args: Command line arguments
+        temp_dir (Path): Temporary directory path
+        output_dir (Path): Output directory path
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    mdp_file = temp_dir / 'minimization.mdp'
     topol_file = temp_dir / 'topol_cg.top'
     gro_file = temp_dir / 'solv_ions_CG.gro'
     
+    # Check or create minimization MDP file
     if not mdp_file.exists():
-        print(f"Warning: {mdp_file} not found, skipping grompp")
-        return False
+        mdp_file = output_dir / "mdp" / args.input_name_file_mdp
+        if not mdp_file.exists():
+            print(f"Warning: {mdp_file} not found, creating default")
+            with open(temp_dir / 'minimization.mdp', 'w') as f:
+                f.write("""integrator = steep
+nsteps = 5000
+emtol = 1000.0
+emstep = 0.01
+nstlist = 10
+cutoff-scheme = Verlet
+coulombtype = PME
+rcoulomb = 1.2
+rvdw = 1.2
+pbc = xyz
+""")
+            mdp_file = temp_dir / 'minimization.mdp'
     
+    # Check required files
     if not topol_file.exists():
         print(f"Warning: {topol_file} not found, skipping grompp")
         return False
@@ -496,30 +827,37 @@ def run_grompp(args, temp_dir, output_dir):
         '-p', 'topol_cg.top',
         '-c', 'solv_ions_CG.gro',
         '-o', 'em.tpr',
-        '-maxwarn', '1'
+        '-maxwarn', '2'
     ]
     
-    print(f"\nRunning grompp in {temp_dir}:")
+    print(f"\nRunning grompp for energy minimization in {temp_dir}:")
     print(f"  {' '.join(cmd)}")
     
     result = subprocess.run(cmd, cwd=temp_dir, env=env, capture_output=True, text=True)
     
     if result.returncode != 0:
         print(f"Error running grompp: {result.stderr}")
+        print(f"stdout: {result.stdout}")
         return False
     
     print("grompp completed successfully")
     return True
 
 def copy_results_to_output(temp_dir, output_dir):
-    """Copy final results to output directory"""
+    """
+    Copy final results to output directory
+    
+    Args:
+        temp_dir (Path): Temporary directory path
+        output_dir (Path): Output directory path
+    """
     files_to_copy = [
-        'solv_ions_CG.gro',
-        'topol_cg.top',
-        'em.tpr',
-        'system.top',
-        'cg.gro',
-        'cg.itp'
+        'solv_ions_CG.gro',  # Solvated and neutralized system
+        'topol_cg.top',       # Updated topology with correct ion counts
+        'em.tpr',             # Energy minimization input
+        'cg.gro',             # Original coordinates
+        'cg.itp',             # Molecule topology
+        'boxed.gro'           # System with box defined
     ]
     
     for filename in files_to_copy:
@@ -535,15 +873,21 @@ def copy_results_to_output(temp_dir, output_dir):
     print(f"{output_dir}/")
     print(f"  ├── ff_files/          (Martini force field parameters)")
     print(f"  ├── mdp/               (Simulation parameter files)")
+    print(f"  ├── ions_mdp/          (MDP files for ion addition)")
     print(f"  ├── solv_ions_CG.gro   (Solvated and neutralized system)")
     print(f"  ├── topol_cg.top       (Updated topology with correct ion counts)")
     print(f"  ├── em.tpr             (Energy minimization input)")
     print(f"  ├── cg.gro             (Original coordinates)")
     print(f"  ├── cg.itp             (Molecule topology)")
-    print(f"  └── system.top         (Insane output for reference)")
+    print(f"  └── boxed.gro          (System with box defined)")
 
 def cleanup_temp(temp_dir):
-    """Clean up temporary directory"""
+    """
+    Clean up temporary directory
+    
+    Args:
+        temp_dir (Path): Temporary directory path
+    """
     try:
         shutil.rmtree(temp_dir)
         print(f"\nCleaned up temporary directory: {temp_dir}")
@@ -551,18 +895,31 @@ def cleanup_temp(temp_dir):
         print(f"Warning: Could not clean up {temp_dir}: {e}")
 
 def main():
-    """Main pipeline function"""
+    """Main pipeline function orchestrating all steps"""
     args = parse_arguments()
     
     print("=" * 60)
-    print("CG System Preparation Pipeline")
+    print("CG System Preparation Pipeline (GROMACS-based with Martini 3)")
     print("=" * 60)
     print(f"Input arguments:")
     print(f"  input_ref_dir: {args.input_ref_dir}")
     print(f"  output_dir: {args.output_dir}")
-    print(f"  pbc: {args.pbc}")
-    print(f"  sol: {args.sol}")
-    print(f"  salt: {args.salt}")
+    print(f"  water_dir: {args.water_dir}")
+    print(f"  water_file: {args.water_file_gro}")
+    print(f"  salt: {args.salt} M")
+    print(f"  Force field files:")
+    print(f"    FF: {args.ff}")
+    print(f"    Ions: {args.ions}")
+    print(f"    Solvent: {args.solvent}")
+    if args.use_distance_from_atom:
+        print(f"  Distance from atom: {args.distance_from_atom} nm")
+    elif args.box_size:
+        print(f"  Fixed box size: {args.box_size} nm")
+    else:
+        print(f"  Using default padding (1.5 nm)")
+    print(f"  Solvent radius: {args.solvent_radius} nm")
+    if args.max_solvent:
+        print(f"  Max solvent molecules: {args.max_solvent}")
     print("=" * 60)
     
     # Setup directories
@@ -570,13 +927,16 @@ def main():
     print(f"\nOutput directory: {output_dir}")
     print(f"Temporary work directory: {temp_dir}")
     
-    # Copy ff_files and mdp to output
+    # Step 1: Copy force field and MDP files
     print("\n" + "=" * 60)
     print("STEP 1: Copying force field and MDP files")
     print("=" * 60)
-    copy_ff_and_mdp_to_output(args, output_dir, temp_dir)
+    if not copy_ff_and_mdp_to_output(args, output_dir, temp_dir):
+        print("Failed to copy ff_files. Exiting.")
+        cleanup_temp(temp_dir)
+        return
     
-    # Copy files to temp
+    # Step 2: Copy input files to working directory
     print("\n" + "=" * 60)
     print("STEP 2: Copying input files to working directory")
     print("=" * 60)
@@ -585,68 +945,56 @@ def main():
         cleanup_temp(temp_dir)
         return
     
-    # Run insane
+    # Step 3: Center molecule and define simulation box
     print("\n" + "=" * 60)
-    print("STEP 3: Running insane (solvation and ionization)")
+    print("STEP 3: Centering molecule and defining simulation box")
     print("=" * 60)
-    if run_insane(args, temp_dir) is None:
-        print("Failed to run insane. Exiting.")
+    if not center_and_box(temp_dir, args):
+        print("Failed to center molecule and define box. Exiting.")
         cleanup_temp(temp_dir)
         return
     
-    # Parse system.top
+    # Step 4: Solvate system with water beads
     print("\n" + "=" * 60)
-    print("STEP 4: Parsing system topology")
+    print("STEP 4: Solvating system with water beads")
     print("=" * 60)
-    w_count, na_count, cl_count = parse_system_top(temp_dir)
+    w_count = solvate_box(temp_dir, args)
     if w_count is None:
-        print("Failed to parse system.top. Exiting.")
+        print("Failed to solvate system. Exiting.")
         cleanup_temp(temp_dir)
         return
     
-    print(f"\nInitial counts from system.top:")
-    print(f"  Water molecules (W): {w_count}")
-    print(f"  Sodium ions (NA+): {na_count}")
-    print(f"  Chloride ions (CL-): {cl_count}")
-    
-    # Standardize GRO file
+    # Step 5: Add ions for neutralization and salt concentration
     print("\n" + "=" * 60)
-    print("STEP 5: Standardizing ion names in GRO file")
+    print("STEP 5: Adding ions to neutralize system")
     print("=" * 60)
-    standardize_gro_file(temp_dir)
+    result = add_ions_gromacs(temp_dir, args, w_count)
+    if not result:
+        print("Failed to add ions. Exiting.")
+        cleanup_temp(temp_dir)
+        return
     
-    # Parse charges from ITP
+    w_count, na_count, cl_count = result
+    
+    # Step 6: Finalize topology file
     print("\n" + "=" * 60)
-    print("STEP 6: Calculating molecular charge from ITP")
+    print("STEP 6: Finalizing topology file")
     print("=" * 60)
-    total_charge = parse_charges_from_itp(temp_dir)
+    update_topol_for_simulation(temp_dir, w_count, na_count, cl_count)
     
-    # Neutralize system if needed
+    # Step 7: Prepare energy minimization with grompp
     print("\n" + "=" * 60)
-    print("STEP 7: Checking and adjusting system neutrality")
+    print("STEP 7: Preparing energy minimization (grompp)")
     print("=" * 60)
-    if abs(total_charge) > 0.01:
-        print(f"System has charge {total_charge:.3f}. Adding counter-ions...")
-        success, na_to_add = neutralize_system(temp_dir, w_count, na_count, cl_count, total_charge)
-        if success:
-            update_topol_cg(temp_dir, w_count, na_count, cl_count, na_to_add)
-    else:
-        print("System is already neutral.")
-        update_topol_cg(temp_dir, w_count, na_count, cl_count, 0)
+    run_grompp_minimization(args, temp_dir, output_dir)
     
-    # Run grompp
+    # Step 8: Copy final results to output directory
     print("\n" + "=" * 60)
-    print("STEP 8: Preparing energy minimization (grompp)")
-    print("=" * 60)
-    run_grompp(args, temp_dir, output_dir)
-    
-    # Copy results
-    print("\n" + "=" * 60)
-    print("STEP 9: Copying final results")
+    print("STEP 8: Copying final results")
     print("=" * 60)
     copy_results_to_output(temp_dir, output_dir)
     
-    # Cleanup
+    # Cleanup temporary directory
     cleanup_temp(temp_dir)
     
     print("\n" + "=" * 60)
@@ -658,6 +1006,9 @@ def main():
     print(f"  gmx mdrun -deffnm em -v")
     print("\nTo view the system:")
     print(f"  gmx view -f solv_ions_CG.gro")
+    print("\nFor production MD simulation:")
+    print(f"  gmx grompp -f production.mdp -c solv_ions_CG.gro -p topol_cg.top -o md.tpr")
+    print(f"  gmx mdrun -deffnm md -v")
     print("=" * 60)
 
 if __name__ == "__main__":
