@@ -8,7 +8,7 @@ recursive-include data/ff_files *
 recursive-include data/mdp *
 
 # Include scripts and binaries
-recursive-include bayesian_potentials/bin *
+recursive-include bayesian_potentials/bin *.sh
 recursive-include bayesian_potentials/scripts *.py
 
 # Exclude cache and backup files

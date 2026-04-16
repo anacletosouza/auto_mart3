@@ -60,6 +60,24 @@ pip install carb_param_automated_martini3
 pip install git+ssh://git@github.com/anacletosouza/carb_param_automated_martini3.git
 ```
 
+### Example
+
+```
+bayesian-potentials autoparam-aa \
+    --aa_tpr md.tpr \
+    --aa_xtc md.xtc \
+    --aa_gro carb.gro \
+    --aa_itp carb_filtered.itp \
+    --beads_json ../json/beads_config.json \
+    --input_mdp ../mdp/minimization.mdp \
+    --path_ff ../ff_files/ \
+    --output_dir results_A2 \
+    --name_molecule molecule \
+    --beads_position com \
+    --force_application "random=[1250,30;30,4]" \
+    --run_distributions	
+```
+
 ## Required Files
 
 Before running the pipeline, prepare these files:

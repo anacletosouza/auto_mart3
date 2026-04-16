@@ -263,9 +263,89 @@ def run_cg_setup_script(args):
     finally:
         sys.argv = original_argv
 
+def run_force_adjustment_script(args):
+    """Run the force constant adjustment script using Bayesian update and simulated annealing."""
+    from bayesian_potentials.scripts.force_adjustment import main as force_main
+    
+    sys_argv = ["force_adjustment.py"]
+    
+    for key, value in vars(args).items():
+        if key == "command" or value is None:
+            continue
+        
+        # Skip internal flags
+        if key in ["verbose"]:
+            continue
+        
+        # Build command line arguments
+        cmd_key = "--" + key
+        
+        if isinstance(value, bool):
+            if value:
+                sys_argv.append(cmd_key)
+        else:
+            sys_argv.append(cmd_key)
+            sys_argv.append(str(value))
+    
+    original_argv = sys.argv
+    sys.argv = sys_argv
+    
+    try:
+        force_main()
+    finally:
+        sys.argv = original_argv
+
 def run_shell_script_AA(args):
-    """Run the main shell pipeline script."""
+    """Run the main shell pipeline script for AA to CG."""
     script_path = get_bin_dir() / "autoparam_AA.sh"
+    
+    if not script_path.exists():
+        print(f"Error: Shell script not found at {script_path}")
+        sys.exit(1)
+    
+    # Make sure script is executable
+    os.chmod(script_path, 0o755)
+    
+    # Build command arguments for shell script
+    cmd_args = [str(script_path)]
+    
+    for key, value in vars(args).items():
+        if key == "command" or value is None:
+            continue
+        
+        # Skip None values and empty lists
+        if isinstance(value, list) and len(value) == 0:
+            continue
+        
+        # IMPORTANT: Keep underscores for shell script (don't convert to hyphens)
+        # The shell script expects underscores, not hyphens
+        cmd_key = "--" + key  # Keep original underscores
+        
+        # Handle boolean flags
+        if isinstance(value, bool):
+            if value:
+                # For boolean True, add the flag
+                cmd_args.append(cmd_key)
+        else:
+            # For non-boolean, add flag and value
+            cmd_args.append(cmd_key)
+            cmd_args.append(str(value))
+    
+    # Debug: print the command if verbose
+    if getattr(args, 'verbose', False):
+        print(f"Running: {' '.join(cmd_args)}")
+    
+    # Run the script
+    try:
+        result = subprocess.run(cmd_args)
+        sys.exit(result.returncode)
+    except KeyboardInterrupt:
+        print("\nInterrupted by user")
+        sys.exit(1)
+
+def run_shell_script_CG(args):
+    """Run the CG parameter optimization pipeline script."""
+    script_path = get_bin_dir() / "autoparam_CG.sh"
     
     if not script_path.exists():
         print(f"Error: Shell script not found at {script_path}")
@@ -409,6 +489,41 @@ def main():
     adapt_parser.add_argument("--verbose", action="store_true",
                              help="Verbose output showing name changes")
     
+    # Force adjustment command
+    force_parser = subparsers.add_parser("force-adjust", help="Adjust force constants using Bayesian update and simulated annealing")
+    force_parser.add_argument("--bonds_ref", required=True,
+                             help="Reference bonds TSV file")
+    force_parser.add_argument("--angles_ref", required=True,
+                             help="Reference angles TSV file")
+    force_parser.add_argument("--dihedrals_ref", required=True,
+                             help="Reference dihedrals TSV file")
+    force_parser.add_argument("--bonds_sim", required=True,
+                             help="Simulated bonds TSV file")
+    force_parser.add_argument("--angles_sim", required=True,
+                             help="Simulated angles TSV file")
+    force_parser.add_argument("--dihedrals_sim", required=True,
+                             help="Simulated dihedrals TSV file")
+    force_parser.add_argument("--itp_cg", required=True,
+                             help="CG ITP file with topology information")
+    force_parser.add_argument("--ndx_bounds", required=True,
+                             help="NDX file with bond indices")
+    force_parser.add_argument("--ndx_angles", required=True,
+                             help="NDX file with angle indices")
+    force_parser.add_argument("--ndx_dihedrals", required=True,
+                             help="NDX file with dihedral indices")
+    force_parser.add_argument("--molecule_name", default="molecule",
+                             help="Molecule name (default: molecule)")
+    force_parser.add_argument("--multimodal_mode", type=bool, default=True,
+                             help="Use peak density mode instead of mean (default: True)")
+    force_parser.add_argument("--variance_multimodal", type=bool, default=True,
+                             help="Use variance from all data instead of peak (default: True)")
+    force_parser.add_argument("--T0", type=float, default=10.0,
+                             help="Initial temperature for simulated annealing (default: 10.0)")
+    force_parser.add_argument("--alpha", type=float, default=0.85,
+                             help="Cooling factor for simulated annealing (default: 0.85)")
+    force_parser.add_argument("--itp_out", default="cg.itp",
+                             help="Output ITP file (default: cg.itp)")
+    
     # CG System Setup command (bp_prep)
     cg_setup_parser = subparsers.add_parser("bp-prep", help="Setup CG system with solvent and ions")
     cg_setup_parser.add_argument("--input_ref_dir", required=True,
@@ -438,67 +553,145 @@ def main():
     cg_setup_parser.add_argument("--verbose", action="store_true",
                                 help="Verbose output")
     
-    # Full pipeline command (autoparam_aa)
-    pipeline_parser = subparsers.add_parser("autoparam-aa", help="Run full AA to CG parametrization pipeline")
+    # Full pipeline command for AA to CG (autoparam_aa)
+    pipeline_aa_parser = subparsers.add_parser("autoparam-aa", help="Run full AA to CG parametrization pipeline")
     
     # Essential arguments (required)
-    essential_group = pipeline_parser.add_argument_group("Essential arguments")
-    essential_group.add_argument("--aa_tpr", required=True, help="AA TPR file")
-    essential_group.add_argument("--aa_xtc", required=True, help="AA trajectory XTC file")
-    essential_group.add_argument("--aa_gro", required=True, help="AA GRO file")
-    essential_group.add_argument("--aa_itp", required=True, help="AA ITP file")
-    essential_group.add_argument("--beads_json", required=True, help="Beads definition JSON file")
-    essential_group.add_argument("--force_application", required=True, help="Force application (e.g., 'random=[1250,30;30,4]')")
-    essential_group.add_argument("--beads_position", required=True, choices=["com", "geom"], help="Beads position ('com' or 'geom')")
-    essential_group.add_argument("--input_mdp", required=True, help="MDP file for grompp")
-    essential_group.add_argument("--path_ff", required=True, help="Force field directory")
+    essential_group_aa = pipeline_aa_parser.add_argument_group("Essential arguments")
+    essential_group_aa.add_argument("--aa_tpr", required=True, help="AA TPR file")
+    essential_group_aa.add_argument("--aa_xtc", required=True, help="AA trajectory XTC file")
+    essential_group_aa.add_argument("--aa_gro", required=True, help="AA GRO file")
+    essential_group_aa.add_argument("--aa_itp", required=True, help="AA ITP file")
+    essential_group_aa.add_argument("--beads_json", required=True, help="Beads definition JSON file")
+    essential_group_aa.add_argument("--force_application", required=True, help="Force application (e.g., 'random=[1250,30;30,4]')")
+    essential_group_aa.add_argument("--beads_position", required=True, choices=["com", "geom"], help="Beads position ('com' or 'geom')")
+    essential_group_aa.add_argument("--input_mdp", required=True, help="MDP file for grompp")
+    essential_group_aa.add_argument("--path_ff", required=True, help="Force field directory")
     
     # Optional arguments with defaults
-    optional_group = pipeline_parser.add_argument_group("Optional arguments")
-    optional_group.add_argument("--output_dir", default="results", help="Output directory (default: results)")
-    optional_group.add_argument("--name_molecule", default="molecule", help="Molecule name (default: molecule)")
-    optional_group.add_argument("--number_molecule", type=int, default=1, help="Number of molecules (default: 1)")
-    optional_group.add_argument("--ff", default="martini_v3.0.0.itp", help="Force field ITP (default: martini_v3.0.0.itp)")
-    optional_group.add_argument("--ions", default="martini_v3.0.0_ions_v1.itp", help="Ions ITP (default: martini_v3.0.0_ions_v1.itp)")
-    optional_group.add_argument("--solvent", default="martini_v3.0.0_solvents_v1.itp", help="Solvent ITP (default: martini_v3.0.0_solvents_v1.itp)")
-    optional_group.add_argument("--title_comments", default="Topology system in Martini 3", help="Topology comments")
-    optional_group.add_argument("--title_system", default="molecule in aqueous solution", help="System title")
-    optional_group.add_argument("--output_topol", default="topol_cg.top", help="Output topology (default: topol_cg.top)")
-    optional_group.add_argument("--cycle_restr", default="fix=3,mode=cycle", 
+    optional_group_aa = pipeline_aa_parser.add_argument_group("Optional arguments")
+    optional_group_aa.add_argument("--output_dir", default="results", help="Output directory (default: results)")
+    optional_group_aa.add_argument("--name_molecule", default="molecule", help="Molecule name (default: molecule)")
+    optional_group_aa.add_argument("--number_molecule", type=int, default=1, help="Number of molecules (default: 1)")
+    optional_group_aa.add_argument("--ff", default="martini_v3.0.0.itp", help="Force field ITP (default: martini_v3.0.0.itp)")
+    optional_group_aa.add_argument("--ions", default="martini_v3.0.0_ions_v1.itp", help="Ions ITP (default: martini_v3.0.0_ions_v1.itp)")
+    optional_group_aa.add_argument("--solvent", default="martini_v3.0.0_solvents_v1.itp", help="Solvent ITP (default: martini_v3.0.0_solvents_v1.itp)")
+    optional_group_aa.add_argument("--title_comments", default="Topology system in Martini 3", help="Topology comments")
+    optional_group_aa.add_argument("--title_system", default="molecule in aqueous solution", help="System title")
+    optional_group_aa.add_argument("--output_topol", default="topol_cg.top", help="Output topology (default: topol_cg.top)")
+    optional_group_aa.add_argument("--cycle_restr", default="fix=3,mode=cycle", 
                                help='Cycle constraints: "none", "fix=3,mode=cycle" (default), or "mode=linear"')
-    optional_group.add_argument("--default_martini", action="store_true", help="Use default Martini 3 masses (72) and zero charges")
-    optional_group.add_argument("--maxwarn", type=int, default=1, help="Max warnings for grompp (default: 1)")
-    optional_group.add_argument("--remove_pbc", action="store_true", default=True, help="Remove PBC (default: true)")
-    optional_group.add_argument("--no_pbc", action="store_false", dest="remove_pbc", help="Skip PBC removal")
-    optional_group.add_argument("--skip_adapt_itp", action="store_true", help="Skip ITP adaptation step")
-    optional_group.add_argument("--skip_grompp", action="store_true", help="Skip grompp step")
-    optional_group.add_argument("--skip_analysis", action="store_true", help="Skip bonds/angles/dihedrals analysis")
-    optional_group.add_argument("--skip_distributions", action="store_true", help="Skip distribution statistics calculation")
-    optional_group.add_argument("--analyze_remove_pbc", action="store_true", help="Remove PBC before analysis")
-    optional_group.add_argument("--analyze_group_1", default="System", help="Group for fitting in analysis (default: System)")
-    optional_group.add_argument("--analyze_group_2", default="System", help="Group for output in analysis (default: System)")
-    optional_group.add_argument("--keep_intermediate", action="store_true", help="Keep intermediate analysis files")
-    optional_group.add_argument("--keep_temp", action="store_true", help="Keep temporary files")
-    optional_group.add_argument("--verbose", action="store_true", help="Verbose output")
+    optional_group_aa.add_argument("--default_martini", action="store_true", help="Use default Martini 3 masses (72) and zero charges")
+    optional_group_aa.add_argument("--maxwarn", type=int, default=1, help="Max warnings for grompp (default: 1)")
+    optional_group_aa.add_argument("--remove_pbc", action="store_true", default=True, help="Remove PBC (default: true)")
+    optional_group_aa.add_argument("--no_pbc", action="store_false", dest="remove_pbc", help="Skip PBC removal")
+    optional_group_aa.add_argument("--skip_adapt_itp", action="store_true", help="Skip ITP adaptation step")
+    optional_group_aa.add_argument("--skip_grompp", action="store_true", help="Skip grompp step")
+    optional_group_aa.add_argument("--skip_analysis", action="store_true", help="Skip bonds/angles/dihedrals analysis")
+    optional_group_aa.add_argument("--skip_distributions", action="store_true", help="Skip distribution statistics calculation")
+    optional_group_aa.add_argument("--analyze_remove_pbc", action="store_true", help="Remove PBC before analysis")
+    optional_group_aa.add_argument("--analyze_group_1", default="System", help="Group for fitting in analysis (default: System)")
+    optional_group_aa.add_argument("--analyze_group_2", default="System", help="Group for output in analysis (default: System)")
+    optional_group_aa.add_argument("--keep_intermediate", action="store_true", help="Keep intermediate analysis files")
+    optional_group_aa.add_argument("--keep_temp", action="store_true", help="Keep temporary files")
+    optional_group_aa.add_argument("--verbose", action="store_true", help="Verbose output")
     
     # Distribution statistics options for pipeline
-    dist_group = pipeline_parser.add_argument_group("Distribution statistics options")
-    dist_group.add_argument("--run_distributions", action="store_true", 
+    dist_group_aa = pipeline_aa_parser.add_argument_group("Distribution statistics options")
+    dist_group_aa.add_argument("--run_distributions", action="store_true", 
                            help="Run distribution statistics after analysis")
-    dist_group.add_argument("--dist_bonds_dir", default="bonds",
+    dist_group_aa.add_argument("--dist_bonds_dir", default="bonds",
                            help="Directory for bond XVG files (default: bonds)")
-    dist_group.add_argument("--dist_angles_dir", default="angles",
+    dist_group_aa.add_argument("--dist_angles_dir", default="angles",
                            help="Directory for angle XVG files (default: angles)")
-    dist_group.add_argument("--dist_dihedrals_dir", default="dihedrals",
+    dist_group_aa.add_argument("--dist_dihedrals_dir", default="dihedrals",
                            help="Directory for dihedral XVG files (default: dihedrals)")
-    dist_group.add_argument("--dist_output_dir", default="STATISTICS",
+    dist_group_aa.add_argument("--dist_output_dir", default="STATISTICS",
                            help="Output directory for statistics TSV files (default: STATISTICS)")
-    dist_group.add_argument("--dist_bond_out", default="bond_statistics.tsv",
+    dist_group_aa.add_argument("--dist_bond_out", default="bond_statistics.tsv",
                            help="Bond statistics output filename (default: bond_statistics.tsv)")
-    dist_group.add_argument("--dist_angle_out", default="angle_statistics.tsv",
+    dist_group_aa.add_argument("--dist_angle_out", default="angle_statistics.tsv",
                            help="Angle statistics output filename (default: angle_statistics.tsv)")
-    dist_group.add_argument("--dist_dihedral_out", default="dihedral_statistics.tsv",
+    dist_group_aa.add_argument("--dist_dihedral_out", default="dihedral_statistics.tsv",
                            help="Dihedral statistics output filename (default: dihedral_statistics.tsv)")
+
+    # Full pipeline command for CG optimization (autoparam_cg)
+    pipeline_cg_parser = subparsers.add_parser("autoparam-cg", help="Run CG parameter optimization pipeline (iterative Bayesian optimization)")
+    
+    # Essential arguments (required)
+    essential_group_cg = pipeline_cg_parser.add_argument_group("Essential arguments")
+    essential_group_cg.add_argument("--cg_md_dir", required=True,
+                                   help="Directory containing CG simulation files")
+    essential_group_cg.add_argument("--bonds_ref", required=True,
+                                   help="Reference bonds TSV file (AA reference)")
+    essential_group_cg.add_argument("--angles_ref", required=True,
+                                   help="Reference angles TSV file (AA reference)")
+    essential_group_cg.add_argument("--dihedrals_ref", required=True,
+                                   help="Reference dihedrals TSV file (AA reference)")
+    essential_group_cg.add_argument("--aa_xvg_bonds", required=True,
+                                   help="Directory with AA bond XVG files (for plotting)")
+    essential_group_cg.add_argument("--aa_xvg_angles", required=True,
+                                   help="Directory with AA angle XVG files (for plotting)")
+    essential_group_cg.add_argument("--aa_xvg_dihedrals", required=True,
+                                   help="Directory with AA dihedral XVG files (for plotting)")
+    essential_group_cg.add_argument("--ndx_bonds", required=True,
+                                   help="NDX file with bond indices")
+    essential_group_cg.add_argument("--ndx_angles", required=True,
+                                   help="NDX file with angle indices")
+    essential_group_cg.add_argument("--ndx_dihedrals", required=True,
+                                   help="NDX file with dihedral indices")
+    
+    # Optional arguments with defaults
+    optional_group_cg = pipeline_cg_parser.add_argument_group("Optional arguments")
+    optional_group_cg.add_argument("--iterations", type=int, default=20,
+                                   help="Number of iterations (default: 20)")
+    optional_group_cg.add_argument("--workdir", default="calibration",
+                                   help="Working directory (default: calibration)")
+    optional_group_cg.add_argument("--ntomp", type=int, default=12,
+                                   help="Number of OpenMP threads (default: 12)")
+    optional_group_cg.add_argument("--ntmpi", type=int, default=1,
+                                   help="Number of MPI threads (default: 1)")
+    optional_group_cg.add_argument("--mdp_dir", default=None,
+                                   help="MDP files directory (required for MD runs)")
+    optional_group_cg.add_argument("--solv_ions_gro", default="solv_ions_CG.gro",
+                                   help="Solvated ions GRO filename (default: solv_ions_CG.gro)")
+    optional_group_cg.add_argument("--itp_to_optimize", default="cg.itp",
+                                   help="ITP file to optimize (default: cg.itp)")
+    optional_group_cg.add_argument("--topol_cg_file", default="topol_cg.top",
+                                   help="Topology filename (default: topol_cg.top)")
+    optional_group_cg.add_argument("--ff_files_dir", default="ff_files",
+                                   help="Force field files directory (default: ff_files)")
+    optional_group_cg.add_argument("--scripts_path", default=None,
+                                   help="Path to scripts directory (auto-detected if not provided)")
+    optional_group_cg.add_argument("--index_ndx", default="index.ndx",
+                                   help="Index file for analysis (default: index.ndx)")
+    optional_group_cg.add_argument("--group_out", default="System",
+                                   help="Group for output in analysis (default: System)")
+    
+    # Multimodal options
+    multimodal_group_cg = pipeline_cg_parser.add_argument_group("Multimodal options")
+    multimodal_group_cg.add_argument("--multimodal_mode", type=bool, default=True,
+                                     help="Use peak density mode (default: True)")
+    multimodal_group_cg.add_argument("--variance_multimodal", type=bool, default=True,
+                                     help="Use variance from all data (default: True)")
+    
+    # Simulated annealing options
+    sa_group_cg = pipeline_cg_parser.add_argument_group("Simulated annealing options")
+    sa_group_cg.add_argument("--T0", type=float, default=10.0,
+                            help="Initial temperature (default: 10.0)")
+    sa_group_cg.add_argument("--alpha", type=float, default=0.85,
+                            help="Cooling factor (default: 0.85)")
+    
+    # Output options
+    output_group_cg = pipeline_cg_parser.add_argument_group("Output options")
+    output_group_cg.add_argument("--output_final", default="FINAL_OPTIMIZED",
+                                help="Final optimized output directory (default: FINAL_OPTIMIZED)")
+    output_group_cg.add_argument("--keep_temp", action="store_true",
+                                help="Keep temporary files")
+    output_group_cg.add_argument("--skip_md", action="store_true",
+                                help="Skip MD simulation (use existing XTC files)")
+    output_group_cg.add_argument("--verbose", action="store_true",
+                                help="Verbose output")
     
     # Show version
     parser.add_argument("--version", action="version", version="bayesian_potentials 0.1.0")
@@ -515,10 +708,14 @@ def main():
         run_distribution_script(args)
     elif args.command == "adapt-itp":
         run_adaptation_script(args)
+    elif args.command == "force-adjust":
+        run_force_adjustment_script(args)
     elif args.command == "bp-prep":
         run_cg_setup_script(args)
     elif args.command == "autoparam-aa":
         run_shell_script_AA(args)
+    elif args.command == "autoparam-cg":
+        run_shell_script_CG(args)
     else:
         parser.print_help()
         sys.exit(1)

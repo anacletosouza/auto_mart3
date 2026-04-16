@@ -6,5 +6,14 @@ from .generate_bonds_angles_dihedrals import main as params_main
 from .bp_distributions import main as bp_main
 from .adaptation_gro_itp import main as adapt_main
 from .bp_prep import main as prep_main
+from .force_adjustment import main as force_main
 
-__all__ = ["map_main", "top_main", "params_main", "bp_main", "adapt_main", "prep_main"]
+__all__ = [
+    "map_main", 
+    "top_main", 
+    "params_main", 
+    "bp_main", 
+    "adapt_main", 
+    "prep_main",
+    "force_main"
+]

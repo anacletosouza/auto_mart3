@@ -7,6 +7,7 @@ FINAL VERSION WITH SIMULATED ANNEALING:
 - Bayesian force update (Gibbs-like sampling)
 - Simulated Annealing acceptance for global error
 - Reuse previous .itp if iteration is rejected
+- Minimum force constraints to prevent numerical instability
 """
 
 import os
@@ -22,6 +23,20 @@ from datetime import datetime
 import warnings
 
 # ============================================
+# Constants
+# ============================================
+
+# Minimum allowed force constants (to prevent simulation instability)
+MIN_FORCE_BOND = 750.0      # Bonds: minimum 750 kJ/(mol·nm^2)
+MIN_FORCE_ANGLE = 15.0      # Angles: minimum 15 kJ/(mol·rad^2)
+MIN_FORCE_DIHEDRAL = 15.0   # Dihedrals: minimum 15 kJ/(mol·rad^2)
+
+# Default force constants (used when missing in ITP)
+DEFAULT_FORCE_BOND = 1250.0
+DEFAULT_FORCE_ANGLE = 25.0
+DEFAULT_FORCE_DIHEDRAL = 25.0
+
+# ============================================
 # Helper functions
 # ============================================
 
@@ -31,6 +46,15 @@ def read_tsv(file_path):
     return pd.read_csv(file_path, sep="\t")
 
 def read_ndx(file_path):
+    """Read NDX file and return list of index tuples.
+    
+    NDX files can have lines like:
+    - "1 2" (bond between atoms 1 and 2)
+    - "1 2 3" (angle between atoms 1,2,3)
+    - "1 2 3 4" (dihedral between atoms 1,2,3,4)
+    - Lines starting with ';' are comments
+    - Lines starting with '[' are section headers
+    """
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File {file_path} not found.")
     
@@ -38,10 +62,33 @@ def read_ndx(file_path):
     with open(file_path, 'r') as f:
         for line in f:
             line = line.strip()
-            if line.startswith('[') or line.startswith(';') or not line:
+            # Skip empty lines, comments, and section headers
+            if not line or line.startswith('[') or line.startswith(';'):
                 continue
+            
+            # Split the line into parts
             parts = line.split()
-            indices.append(tuple(int(x) for x in parts))
+            if not parts:
+                continue
+            
+            # Convert only numeric values (ignore any non-numeric like comments)
+            numeric_parts = []
+            for x in parts:
+                # Check if it's a number (positive or negative)
+                try:
+                    num = int(x)
+                    numeric_parts.append(num)
+                except ValueError:
+                    # Skip non-numeric values (like inline comments)
+                    # If we encounter a comment after numbers, stop processing this line
+                    if x.startswith(';'):
+                        break
+                    continue
+            
+            # Add tuple if we have at least 2 numbers (bonds need at least 2)
+            if len(numeric_parts) >= 2:
+                indices.append(tuple(numeric_parts))
+    
     return indices
 
 def format_bond(i,j,length,force):
@@ -172,12 +219,41 @@ def get_peak_properties(data):
         return np.mean(data), np.var(data)
 
 # ============================================
-# Bayesian update (Gibbs-like)
+# Bayesian update (Gibbs-like) with bounds
 # ============================================
 
-def choose_best_force(F_orig, sigma_ref, sigma_curr, sigma_prev):
+def choose_best_force(F_orig, sigma_ref, sigma_curr, sigma_prev, force_type='bond'):
+    """
+    Choose best force constant with Bayesian update.
+    
+    Parameters:
+    -----------
+    F_orig : float
+        Original force constant from ITP
+    sigma_ref : float
+        Reference standard deviation
+    sigma_curr : float
+        Current simulated standard deviation
+    sigma_prev : float
+        Previous iteration standard deviation (optional)
+    force_type : str
+        Type of force: 'bond', 'angle', or 'dihedral'
+    
+    Returns:
+    --------
+    tuple : (new_force, status_message)
+    """
+    
+    # Get minimum force based on type
+    if force_type == 'bond':
+        min_force = MIN_FORCE_BOND
+    elif force_type == 'angle':
+        min_force = MIN_FORCE_ANGLE
+    else:  # dihedral
+        min_force = MIN_FORCE_DIHEDRAL
+    
     if sigma_curr == 0:
-        return F_orig, "NOT CHANGED (zero sigma)"
+        return max(F_orig, min_force), "NOT CHANGED (zero sigma)"
 
     if sigma_prev is not None:
         mu_prior = sigma_prev
@@ -198,23 +274,31 @@ def choose_best_force(F_orig, sigma_ref, sigma_curr, sigma_prev):
     for s in samples:
         if s <= 0:
             continue
-        F_candidates.append(F_orig * (s / sigma_ref))
+        F_cand = F_orig * (s / sigma_ref)
+        # Apply minimum bound
+        F_cand = max(F_cand, min_force)
+        F_candidates.append(F_cand)
 
     if not F_candidates:
-        return F_orig, "NOT CHANGED (no samples)"
+        return max(F_orig, min_force), "NOT CHANGED (no samples)"
 
-    best_F = F_orig
+    best_F = max(F_orig, min_force)
     best_error = abs(sigma_ref - sigma_curr)
 
     for F_cand in F_candidates:
-        sigma_pred = sigma_curr * (F_orig / F_cand)
+        sigma_pred = sigma_curr * (F_orig / F_cand) if F_cand > 0 else sigma_curr
         err = abs(sigma_ref - sigma_pred)
         if err < best_error:
             best_error = err
             best_F = F_cand
 
+    # Final check: ensure force is not below minimum
+    if best_F < min_force:
+        best_F = min_force
+        return best_F, f"FORCED TO MIN ({min_force:.1f})"
+    
     if best_F == F_orig:
-        return F_orig, "NOT CHANGED (Bayes reject)"
+        return best_F, "NOT CHANGED (Bayes reject)"
     else:
         return best_F, "CHANGED (Bayes)"
 
@@ -298,6 +382,7 @@ def main():
     print(f"Multimodal mode: {args.multimodal_mode}")
     print(f"Variance multimodal: {args.variance_multimodal}")
     print(f"T0: {args.T0}, alpha: {args.alpha}")
+    print(f"Minimum forces: Bond={MIN_FORCE_BOND}, Angle={MIN_FORCE_ANGLE}, Dihedral={MIN_FORCE_DIHEDRAL}")
     print(f"{'='*60}\n")
     
     # Load data
@@ -445,15 +530,15 @@ def main():
     # Generate ITP
     print("\nGenerating new ITP file...")
     
-    # Default force constants
-    DEFAULT_FORCE_BOND = 1250
-    DEFAULT_FORCE_ANGLE = 25
-    DEFAULT_FORCE_DIHEDRAL = 25
-    
     # Track missing force constants
     missing_bonds = []
     missing_angles = []
     missing_dihedrals = []
+    
+    # Track forced-to-min values
+    forced_bonds = []
+    forced_angles = []
+    forced_dihedrals = []
     
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
@@ -463,7 +548,8 @@ def main():
         f.write(f"; Generated on {timestamp}\n")
         f.write(f"; Iteration: {current_iter}\n")
         f.write(f"; Multimodal mode: {args.multimodal_mode}\n")
-        f.write(f"; Variance multimodal: {args.variance_multimodal}\n\n")
+        f.write(f"; Variance multimodal: {args.variance_multimodal}\n")
+        f.write(f"; Minimum forces: Bond={MIN_FORCE_BOND}, Angle={MIN_FORCE_ANGLE}, Dihedral={MIN_FORCE_DIHEDRAL}\n\n")
         
         # Write molecule type
         f.write("[ moleculetype ]\n")
@@ -495,7 +581,11 @@ def main():
             sigma_sim = bonds_sim_processed.loc[idx,'sd'] if idx < len(bonds_sim_processed) else row['sd']
             prev_sigma = bonds_prev_df.loc[idx,'sd'] if bonds_prev_df is not None and idx < len(bonds_prev_df) else None
             
-            F_new, status = choose_best_force(FORCE_BOND, row['sd'], sigma_sim, prev_sigma)
+            F_new, status = choose_best_force(FORCE_BOND, row['sd'], sigma_sim, prev_sigma, force_type='bond')
+            
+            # Track forced values
+            if "FORCED TO MIN" in status:
+                forced_bonds.append(f"({i}, {j}) -> {F_new:.1f}")
             
             f.write(format_bond(i, j, row['mean'], F_new) +
                     f" ; σ_ref={row['sd']:.4f} σ_sim={sigma_sim:.4f} "
@@ -521,7 +611,11 @@ def main():
             sigma_sim = angles_sim_processed.loc[idx,'sd'] if idx < len(angles_sim_processed) else row['sd']
             prev_sigma = angles_prev_df.loc[idx,'sd'] if angles_prev_df is not None and idx < len(angles_prev_df) else None
             
-            F_new, status = choose_best_force(FORCE_ANGLE, row['sd'], sigma_sim, prev_sigma)
+            F_new, status = choose_best_force(FORCE_ANGLE, row['sd'], sigma_sim, prev_sigma, force_type='angle')
+            
+            # Track forced values
+            if "FORCED TO MIN" in status:
+                forced_angles.append(f"({i}, {j}, {k}) -> {F_new:.1f}")
             
             f.write(format_angle(i, j, k, row['mean'], F_new) +
                     f" ; σ_ref={row['sd']:.4f} σ_sim={sigma_sim:.4f} "
@@ -550,7 +644,11 @@ def main():
             # Use angle from reference data (removed dihedrals_target)
             angle_val = row['mean']
             
-            F_new, status = choose_best_force(FORCE_DIHEDRAL, row['sd'], sigma_sim, prev_sigma)
+            F_new, status = choose_best_force(FORCE_DIHEDRAL, row['sd'], sigma_sim, prev_sigma, force_type='dihedral')
+            
+            # Track forced values
+            if "FORCED TO MIN" in status:
+                forced_dihedrals.append(f"({i}, {j}, {k}, {l}) -> {F_new:.1f}")
             
             f.write(format_dihedral(i, j, k, l, angle_val, F_new) +
                     f" ; σ_ref={row['sd']:.4f} "
@@ -573,6 +671,37 @@ def main():
         warnings.warn(f"Dihedrals without defined force constants (using default {DEFAULT_FORCE_DIHEDRAL}): {', '.join(missing_dihedrals[:10])}")
         if len(missing_dihedrals) > 10:
             print(f"  ... and {len(missing_dihedrals) - 10} more")
+    
+    # Print forced values summary
+    if forced_bonds:
+        print(f"\n  Bonds forced to minimum ({MIN_FORCE_BOND}): {len(forced_bonds)}")
+        if len(forced_bonds) <= 10:
+            for fb in forced_bonds:
+                print(f"    {fb}")
+        else:
+            for fb in forced_bonds[:5]:
+                print(f"    {fb}")
+            print(f"    ... and {len(forced_bonds)-5} more")
+    
+    if forced_angles:
+        print(f"\n  Angles forced to minimum ({MIN_FORCE_ANGLE}): {len(forced_angles)}")
+        if len(forced_angles) <= 10:
+            for fa in forced_angles:
+                print(f"    {fa}")
+        else:
+            for fa in forced_angles[:5]:
+                print(f"    {fa}")
+            print(f"    ... and {len(forced_angles)-5} more")
+    
+    if forced_dihedrals:
+        print(f"\n  Dihedrals forced to minimum ({MIN_FORCE_DIHEDRAL}): {len(forced_dihedrals)}")
+        if len(forced_dihedrals) <= 10:
+            for fd in forced_dihedrals:
+                print(f"    {fd}")
+        else:
+            for fd in forced_dihedrals[:5]:
+                print(f"    {fd}")
+            print(f"    ... and {len(forced_dihedrals)-5} more")
     
     print(f"\n{'='*60}")
     print(f"ITP file successfully generated: {args.itp_out}")
