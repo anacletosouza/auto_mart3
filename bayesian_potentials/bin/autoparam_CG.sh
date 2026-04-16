@@ -77,6 +77,15 @@ usage() {
 }
 
 # -----------------------
+# Helper function to convert boolean to lowercase for Python
+# -----------------------
+to_python_bool() {
+    local val="$1"
+    # Convert to lowercase for Python
+    echo "$val" | tr '[:upper:]' '[:lower:]'
+}
+
+# -----------------------
 # Default values
 # -----------------------
 # Essential args (no defaults)
@@ -612,6 +621,11 @@ for ((i=0; i<$ITERATIONS; i++)); do
         done
     
         echo "  Running force adjustment..."
+        
+        # Convert boolean values to lowercase for Python
+        MULTIMODAL_MODE_LOWER=$(to_python_bool "$MULTIMODAL_MODE")
+        VARIANCE_MULTIMODAL_LOWER=$(to_python_bool "$VARIANCE_MULTIMODAL")
+        
         bayesian-potentials force-adjust \
             --bonds_ref "$BONDS_REF_ABS" \
             --angles_ref "$ANGLES_REF_ABS" \
@@ -624,8 +638,8 @@ for ((i=0; i<$ITERATIONS; i++)); do
             --ndx_angles "$NDX_ANGLES_ABS" \
             --ndx_dihedrals "$NDX_DIHEDRALS_ABS" \
             --molecule_name "molecule" \
-            --multimodal_mode "$MULTIMODAL_MODE" \
-            --variance_multimodal "$VARIANCE_MULTIMODAL" \
+            --multimodal_mode "$MULTIMODAL_MODE_LOWER" \
+            --variance_multimodal "$VARIANCE_MULTIMODAL_LOWER" \
             --T0 "$T0" \
             --alpha "$ALPHA" \
             --itp_out "$NEXT_DIR/$ITP_TO_OPTIMIZE"
