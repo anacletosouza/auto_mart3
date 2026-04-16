@@ -48,8 +48,10 @@ usage() {
     echo "  --group_out STR           Group for output in analysis (default: System)"
     echo ""
     echo "MULTIMODAL OPTIONS:"
-    echo "  --multimodal_mode BOOL    Use peak density mode (default: True)"
-    echo "  --variance_multimodal BOOL Use variance from all data (default: True)"
+    echo "  --multimodal_mode         Use peak density mode (default: enabled)"
+    echo "  --no_multimodal_mode      Disable peak density mode (use mean instead)"
+    echo "  --variance_multimodal     Use variance from all data (default: enabled)"
+    echo "  --no_variance_multimodal  Use variance from peak only"
     echo ""
     echo "SIMULATED ANNEALING OPTIONS:"
     echo "  --T0 FLOAT                Initial temperature (default: 10.0)"
@@ -74,15 +76,6 @@ usage() {
     echo "     --ndx_dihedrals NDX/dihedrals.ndx \\"
     echo "     --mdp_dir mdp"
     exit 1
-}
-
-# -----------------------
-# Helper function to convert boolean to lowercase for Python
-# -----------------------
-to_python_bool() {
-    local val="$1"
-    # Convert to lowercase for Python
-    echo "$val" | tr '[:upper:]' '[:lower:]'
 }
 
 # -----------------------
@@ -113,9 +106,9 @@ FF_FILES_DIR="ff_files"
 INDEX_NDX="index.ndx"
 GROUP_OUT="System"
 
-# Multimodal options
-MULTIMODAL_MODE="True"
-VARIANCE_MULTIMODAL="True"
+# Multimodal options (default: enabled)
+MULTIMODAL_MODE="true"
+VARIANCE_MULTIMODAL="true"
 
 # Simulated annealing options
 T0=10.0
@@ -158,8 +151,10 @@ while [[ $# -gt 0 ]]; do
         --index_ndx) INDEX_NDX="$2"; shift 2 ;;
         --group_out) GROUP_OUT="$2"; shift 2 ;;
         
-        --multimodal_mode) MULTIMODAL_MODE="$2"; shift 2 ;;
-        --variance_multimodal) VARIANCE_MULTIMODAL="$2"; shift 2 ;;
+        --multimodal_mode) MULTIMODAL_MODE="true"; shift ;;
+        --no_multimodal_mode) MULTIMODAL_MODE="false"; shift ;;
+        --variance_multimodal) VARIANCE_MULTIMODAL="true"; shift ;;
+        --no_variance_multimodal) VARIANCE_MULTIMODAL="false"; shift ;;
         
         --T0) T0="$2"; shift 2 ;;
         --alpha) ALPHA="$2"; shift 2 ;;
@@ -579,8 +574,6 @@ for ((i=0; i<$ITERATIONS; i++)); do
     # -------------------------------
     # Plot distributions (AA reference vs CG simulated)
     # -------------------------------
-    # Note: plot_distributions.py is not yet available as CLI command
-    # This will be added in a future update
     if [ -f "$PACKAGE_DIR/scripts/plot_distributions.py" ]; then
         echo "  Plotting distributions (AA reference vs CG simulated)..."
         mkdir -p figures
@@ -622,27 +615,38 @@ for ((i=0; i<$ITERATIONS; i++)); do
     
         echo "  Running force adjustment..."
         
-        # Convert boolean values to lowercase for Python
-        MULTIMODAL_MODE_LOWER=$(to_python_bool "$MULTIMODAL_MODE")
-        VARIANCE_MULTIMODAL_LOWER=$(to_python_bool "$VARIANCE_MULTIMODAL")
+        # Build force-adjust command with boolean flags
+        FORCE_ADJUST_CMD="bayesian-potentials force-adjust \
+            --bonds_ref \"$BONDS_REF_ABS\" \
+            --angles_ref \"$ANGLES_REF_ABS\" \
+            --dihedrals_ref \"$DIHEDRALS_REF_ABS\" \
+            --bonds_sim \"stat/bond_${i}.tsv\" \
+            --angles_sim \"stat/angle_${i}.tsv\" \
+            --dihedrals_sim \"stat/dihedral_${i}.tsv\" \
+            --itp_cg \"$CURRENT_DIR/$ITP_TO_OPTIMIZE\" \
+            --ndx_bounds \"$NDX_BONDS_ABS\" \
+            --ndx_angles \"$NDX_ANGLES_ABS\" \
+            --ndx_dihedrals \"$NDX_DIHEDRALS_ABS\" \
+            --molecule_name \"molecule\" \
+            --T0 $T0 \
+            --alpha $ALPHA \
+            --itp_out \"$NEXT_DIR/$ITP_TO_OPTIMIZE\""
         
-        bayesian-potentials force-adjust \
-            --bonds_ref "$BONDS_REF_ABS" \
-            --angles_ref "$ANGLES_REF_ABS" \
-            --dihedrals_ref "$DIHEDRALS_REF_ABS" \
-            --bonds_sim "stat/bond_${i}.tsv" \
-            --angles_sim "stat/angle_${i}.tsv" \
-            --dihedrals_sim "stat/dihedral_${i}.tsv" \
-            --itp_cg "$CURRENT_DIR/$ITP_TO_OPTIMIZE" \
-            --ndx_bounds "$NDX_BONDS_ABS" \
-            --ndx_angles "$NDX_ANGLES_ABS" \
-            --ndx_dihedrals "$NDX_DIHEDRALS_ABS" \
-            --molecule_name "molecule" \
-            --multimodal_mode "$MULTIMODAL_MODE_LOWER" \
-            --variance_multimodal "$VARIANCE_MULTIMODAL_LOWER" \
-            --T0 "$T0" \
-            --alpha "$ALPHA" \
-            --itp_out "$NEXT_DIR/$ITP_TO_OPTIMIZE"
+        # Add multimodal flags based on boolean values
+        if [ "$MULTIMODAL_MODE" = "true" ]; then
+            FORCE_ADJUST_CMD="$FORCE_ADJUST_CMD --multimodal_mode"
+        else
+            FORCE_ADJUST_CMD="$FORCE_ADJUST_CMD --no_multimodal_mode"
+        fi
+        
+        if [ "$VARIANCE_MULTIMODAL" = "true" ]; then
+            FORCE_ADJUST_CMD="$FORCE_ADJUST_CMD --variance_multimodal"
+        else
+            FORCE_ADJUST_CMD="$FORCE_ADJUST_CMD --no_variance_multimodal"
+        fi
+        
+        # Execute the command
+        eval $FORCE_ADJUST_CMD
         
         if [ $? -eq 0 ]; then
             echo "  ✓ Updated ITP saved to: $NEXT_DIR/$ITP_TO_OPTIMIZE"
