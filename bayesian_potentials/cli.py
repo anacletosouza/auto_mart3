@@ -283,6 +283,7 @@ def run_force_adjustment_script(args):
         if isinstance(value, bool):
             if value:
                 sys_argv.append(cmd_key)
+            # If False, don't add the flag (it's handled by the complementary flag)
         else:
             sys_argv.append(cmd_key)
             sys_argv.append(str(value))
@@ -489,7 +490,7 @@ def main():
     adapt_parser.add_argument("--verbose", action="store_true",
                              help="Verbose output showing name changes")
     
-    # Force adjustment command
+    # Force adjustment command - MODIFIED with proper boolean flags
     force_parser = subparsers.add_parser("force-adjust", help="Adjust force constants using Bayesian update and simulated annealing")
     force_parser.add_argument("--bonds_ref", required=True,
                              help="Reference bonds TSV file")
@@ -513,10 +514,19 @@ def main():
                              help="NDX file with dihedral indices")
     force_parser.add_argument("--molecule_name", default="molecule",
                              help="Molecule name (default: molecule)")
-    force_parser.add_argument("--multimodal_mode", type=bool, default=True,
+    
+    # Boolean flags for multimodal mode (default: True)
+    force_parser.add_argument("--multimodal_mode", action="store_true", default=True,
                              help="Use peak density mode instead of mean (default: True)")
-    force_parser.add_argument("--variance_multimodal", type=bool, default=True,
+    force_parser.add_argument("--no_multimodal_mode", action="store_false", dest="multimodal_mode",
+                             help="Disable multimodal mode (use mean instead of peak)")
+    
+    # Boolean flags for variance multimodal (default: True)
+    force_parser.add_argument("--variance_multimodal", action="store_true", default=True,
                              help="Use variance from all data instead of peak (default: True)")
+    force_parser.add_argument("--no_variance_multimodal", action="store_false", dest="variance_multimodal",
+                             help="Use variance from peak only")
+    
     force_parser.add_argument("--T0", type=float, default=10.0,
                              help="Initial temperature for simulated annealing (default: 10.0)")
     force_parser.add_argument("--alpha", type=float, default=0.85,
@@ -668,12 +678,16 @@ def main():
     optional_group_cg.add_argument("--group_out", default="System",
                                    help="Group for output in analysis (default: System)")
     
-    # Multimodal options
+    # Multimodal options - MODIFIED with proper boolean flags
     multimodal_group_cg = pipeline_cg_parser.add_argument_group("Multimodal options")
-    multimodal_group_cg.add_argument("--multimodal_mode", type=bool, default=True,
+    multimodal_group_cg.add_argument("--multimodal_mode", action="store_true", default=True,
                                      help="Use peak density mode (default: True)")
-    multimodal_group_cg.add_argument("--variance_multimodal", type=bool, default=True,
+    multimodal_group_cg.add_argument("--no_multimodal_mode", action="store_false", dest="multimodal_mode",
+                                     help="Disable multimodal mode (use mean instead of peak)")
+    multimodal_group_cg.add_argument("--variance_multimodal", action="store_true", default=True,
                                      help="Use variance from all data (default: True)")
+    multimodal_group_cg.add_argument("--no_variance_multimodal", action="store_false", dest="variance_multimodal",
+                                     help="Use variance from peak only")
     
     # Simulated annealing options
     sa_group_cg = pipeline_cg_parser.add_argument_group("Simulated annealing options")
