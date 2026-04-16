@@ -8,6 +8,11 @@ FINAL VERSION WITH SIMULATED ANNEALING:
 - Simulated Annealing acceptance for global error
 - Reuse previous .itp if iteration is rejected
 - Minimum force constraints to prevent numerical instability
+
+usage: bayesian-potentials force-adjust [-h] --bonds_ref BONDS_REF --angles_ref ANGLES_REF --dihedrals_ref DIHEDRALS_REF
+                                        --bonds_sim BONDS_SIM --angles_sim ANGLES_SIM --dihedrals_sim DIHEDRALS_SIM --itp_cg
+                                        ITP_CG --ndx_bounds NDX_BOUNDS --ndx_angles NDX_ANGLES --ndx_dihedrals NDX_DIHEDRALS
+                                        [--molecule_name MOLECULE_NAME] [--multimodal_mode MULTIMODAL_MODE]
 """
 
 import os
@@ -39,6 +44,14 @@ DEFAULT_FORCE_DIHEDRAL = 25.0
 # ============================================
 # Helper functions
 # ============================================
+
+def str_to_bool(value):
+    """Convert string to boolean."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ('true', '1', 'yes', 'on')
+    return bool(value)
 
 def read_tsv(file_path):
     if not os.path.exists(file_path):
@@ -357,10 +370,10 @@ def main():
     parser.add_argument("--ndx_angles", required=True, help="NDX file with angle indices")
     parser.add_argument("--ndx_dihedrals", required=True, help="NDX file with dihedral indices")
     parser.add_argument("--molecule_name", default="molecule", help="Molecule name (default: molecule)")
-    parser.add_argument("--multimodal_mode", type=bool, default=True, 
-                        help="Use peak density mode instead of mean (default: True)")
-    parser.add_argument("--variance_multimodal", type=bool, default=True,
-                        help="Use variance from all data instead of peak (default: True)")
+    parser.add_argument("--multimodal_mode", type=str, default="true", 
+                        help="Use peak density mode instead of mean (default: true)")
+    parser.add_argument("--variance_multimodal", type=str, default="true",
+                        help="Use variance from all data instead of peak (default: true)")
     parser.add_argument("--T0", type=float, default=10.0, 
                         help="Initial temperature for simulated annealing (default: 10.0)")
     parser.add_argument("--alpha", type=float, default=0.85,
@@ -368,6 +381,10 @@ def main():
     parser.add_argument("--itp_out", default="cg.itp", help="Output ITP file (default: cg.itp)")
     
     args = parser.parse_args()
+    
+    # Convert string boolean arguments to actual booleans
+    multimodal_mode = str_to_bool(args.multimodal_mode)
+    variance_multimodal = str_to_bool(args.variance_multimodal)
     
     # Detect iteration
     current_iter = int(os.path.basename(args.bonds_sim).split("_")[-1].split(".")[0])
@@ -379,8 +396,8 @@ def main():
     print(f"\n{'='*60}")
     print(f"Starting iteration {current_iter}")
     print(f"{'='*60}")
-    print(f"Multimodal mode: {args.multimodal_mode}")
-    print(f"Variance multimodal: {args.variance_multimodal}")
+    print(f"Multimodal mode: {multimodal_mode}")
+    print(f"Variance multimodal: {variance_multimodal}")
     print(f"T0: {args.T0}, alpha: {args.alpha}")
     print(f"Minimum forces: Bond={MIN_FORCE_BOND}, Angle={MIN_FORCE_ANGLE}, Dihedral={MIN_FORCE_DIHEDRAL}")
     print(f"{'='*60}\n")
@@ -434,13 +451,13 @@ def main():
     
     # Apply multimodal processing
     bonds_ref_processed, bonds_sim_processed = process_statistics(
-        bonds_ref_df, bonds_sim_df, args.multimodal_mode, args.variance_multimodal
+        bonds_ref_df, bonds_sim_df, multimodal_mode, variance_multimodal
     )
     angles_ref_processed, angles_sim_processed = process_statistics(
-        angles_ref_df, angles_sim_df, args.multimodal_mode, args.variance_multimodal
+        angles_ref_df, angles_sim_df, multimodal_mode, variance_multimodal
     )
     dihedrals_ref_processed, dihedrals_sim_processed = process_statistics(
-        dihedrals_ref_df, dihedrals_sim_df, args.multimodal_mode, args.variance_multimodal
+        dihedrals_ref_df, dihedrals_sim_df, multimodal_mode, variance_multimodal
     )
     
     # Compute global error
@@ -547,8 +564,8 @@ def main():
         f.write(f";;;;;; {args.molecule_name} - Final topology\n")
         f.write(f"; Generated on {timestamp}\n")
         f.write(f"; Iteration: {current_iter}\n")
-        f.write(f"; Multimodal mode: {args.multimodal_mode}\n")
-        f.write(f"; Variance multimodal: {args.variance_multimodal}\n")
+        f.write(f"; Multimodal mode: {multimodal_mode}\n")
+        f.write(f"; Variance multimodal: {variance_multimodal}\n")
         f.write(f"; Minimum forces: Bond={MIN_FORCE_BOND}, Angle={MIN_FORCE_ANGLE}, Dihedral={MIN_FORCE_DIHEDRAL}\n\n")
         
         # Write molecule type
