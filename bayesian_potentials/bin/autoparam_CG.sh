@@ -1,3 +1,4 @@
+
 #!/bin/bash
 
 set -e
@@ -44,14 +45,13 @@ usage() {
     echo "  --itp_to_optimize FILE    ITP file to optimize (default: cg.itp)"
     echo "  --topol_cg_file FILE      Topology filename (default: topol_cg.top)"
     echo "  --ff_files_dir DIR        Force field files directory (default: ff_files)"
+    echo "  --scripts_path DIR        Path to scripts directory"
     echo "  --index_ndx FILE          Index file for analysis (default: index.ndx)"
     echo "  --group_out STR           Group for output in analysis (default: System)"
     echo ""
     echo "MULTIMODAL OPTIONS:"
-    echo "  --multimodal_mode         Use peak density mode (default: enabled)"
-    echo "  --no_multimodal_mode      Disable peak density mode (use mean instead)"
-    echo "  --variance_multimodal     Use variance from all data (default: enabled)"
-    echo "  --no_variance_multimodal  Use variance from peak only"
+    echo "  --multimodal_mode BOOL    Use peak density mode (default: True)"
+    echo "  --variance_multimodal BOOL Use variance from all data (default: True)"
     echo ""
     echo "SIMULATED ANNEALING OPTIONS:"
     echo "  --T0 FLOAT                Initial temperature (default: 10.0)"
@@ -103,12 +103,13 @@ SOLV_IONS_GRO="solv_ions_CG.gro"
 ITP_TO_OPTIMIZE="cg.itp"
 TOPOL_CG_FILE="topol_cg.top"
 FF_FILES_DIR="ff_files"
+SCRIPTS_PATH=""
 INDEX_NDX="index.ndx"
 GROUP_OUT="System"
 
-# Multimodal options (default: enabled)
-MULTIMODAL_MODE="true"
-VARIANCE_MULTIMODAL="true"
+# Multimodal options
+MULTIMODAL_MODE="True"
+VARIANCE_MULTIMODAL="True"
 
 # Simulated annealing options
 T0=10.0
@@ -138,7 +139,7 @@ while [[ $# -gt 0 ]]; do
         --ndx_bonds) NDX_BONDS="$2"; shift 2 ;;
         --ndx_angles) NDX_ANGLES="$2"; shift 2 ;;
         --ndx_dihedrals) NDX_DIHEDRALS="$2"; shift 2 ;;
-        
+
         --iterations) ITERATIONS="$2"; shift 2 ;;
         --workdir) WORKDIR="$2"; shift 2 ;;
         --ntomp) NTOMP="$2"; shift 2 ;;
@@ -148,22 +149,21 @@ while [[ $# -gt 0 ]]; do
         --itp_to_optimize) ITP_TO_OPTIMIZE="$2"; shift 2 ;;
         --topol_cg_file) TOPOL_CG_FILE="$2"; shift 2 ;;
         --ff_files_dir) FF_FILES_DIR="$2"; shift 2 ;;
+        --scripts_path) SCRIPTS_PATH="$2"; shift 2 ;;
         --index_ndx) INDEX_NDX="$2"; shift 2 ;;
         --group_out) GROUP_OUT="$2"; shift 2 ;;
-        
-        --multimodal_mode) MULTIMODAL_MODE="true"; shift ;;
-        --no_multimodal_mode) MULTIMODAL_MODE="false"; shift ;;
-        --variance_multimodal) VARIANCE_MULTIMODAL="true"; shift ;;
-        --no_variance_multimodal) VARIANCE_MULTIMODAL="false"; shift ;;
-        
+
+        --multimodal_mode) MULTIMODAL_MODE="$2"; shift 2 ;;
+        --variance_multimodal) VARIANCE_MULTIMODAL="$2"; shift 2 ;;
+
         --T0) T0="$2"; shift 2 ;;
         --alpha) ALPHA="$2"; shift 2 ;;
-        
+
         --output_final) OUTPUT_FINAL="$2"; shift 2 ;;
         --keep_temp) KEEP_TEMP="true"; shift ;;
         --skip_md) SKIP_MD="true"; shift ;;
         --verbose) VERBOSE="true"; shift ;;
-        
+
         -h|--help) usage ;;
         *) echo "Unknown option: $1"; usage ;;
     esac
@@ -216,6 +216,19 @@ if [ -n "$MDP_DIR" ]; then
     MDP_DIR_ABS=$(get_abs_path "$MDP_DIR")
 else
     MDP_DIR_ABS=""
+fi
+
+if [ -n "$SCRIPTS_PATH" ]; then
+    SCRIPTS_PATH_ABS=$(get_abs_path "$SCRIPTS_PATH")
+else
+    # Try to find scripts in package
+    if [ -d "$PACKAGE_DIR/scripts" ]; then
+        SCRIPTS_PATH_ABS="$PACKAGE_DIR/scripts"
+    elif [ -d "$SCRIPT_DIR/../scripts" ]; then
+        SCRIPTS_PATH_ABS="$SCRIPT_DIR/../scripts"
+    else
+        SCRIPTS_PATH_ABS=""
+    fi
 fi
 
 INDEX_NDX_ABS=$(get_abs_path "$INDEX_NDX")
@@ -272,6 +285,7 @@ echo "  Solv ions GRO:       $SOLV_IONS_GRO"
 echo "  ITP to optimize:     $ITP_TO_OPTIMIZE"
 echo "  Topology file:       $TOPOL_CG_FILE"
 echo "  FF files dir:        $FF_FILES_DIR"
+echo "  Scripts path:        $SCRIPTS_PATH_ABS"
 echo "  Index NDX:           $INDEX_NDX_ABS"
 echo "  Group out:           $GROUP_OUT"
 echo ""
@@ -318,16 +332,16 @@ run_md_simulation() {
     local mdp_dir="$2"
     local solv_gro="$3"
     local topol_file="$4"
-    
+
     cd "$work_dir"
     echo "    Running MD simulation in: $(pwd)"
-    
+
     # Check if MDP files exist
     if [ ! -d "$mdp_dir" ]; then
         echo "      Error: MDP directory not found: $mdp_dir"
         return 1
     fi
-    
+
     # Energy minimization
     if [ -f "$mdp_dir/minimization.mdp" ]; then
         echo "      Energy minimization..."
@@ -338,7 +352,7 @@ run_md_simulation() {
     else
         echo "      Warning: minimization.mdp not found, skipping minimization"
     fi
-    
+
     # NVT equilibration
     if [ -f "$mdp_dir/CG_nvt_1000.mdp" ]; then
         echo "      NVT equilibration..."
@@ -349,7 +363,7 @@ run_md_simulation() {
     else
         echo "      Warning: CG_nvt_1000.mdp not found, skipping NVT"
     fi
-    
+
     # NPT equilibration
     if [ -f "$mdp_dir/CG_npt_1000.mdp" ]; then
         echo "      NPT equilibration..."
@@ -360,7 +374,7 @@ run_md_simulation() {
     else
         echo "      Warning: CG_npt_1000.mdp not found, skipping NPT"
     fi
-    
+
     # Production MD
     if [ -f "$mdp_dir/CG_md.mdp" ]; then
         echo "      Production MD..."
@@ -372,7 +386,7 @@ run_md_simulation() {
         echo "      Warning: CG_md.mdp not found, skipping production MD"
         return 1
     fi
-    
+
     echo "      ✓ MD simulation completed"
     return 0
 }
@@ -386,32 +400,32 @@ analyze_trajectory() {
     local angles_ndx="$3"
     local dihedrals_ndx="$4"
     local group_out="$5"
-    
+
     cd "$work_dir"
     echo "    Analyzing trajectory..."
-    
+
     # Check if md.xtc exists
     if [ ! -f "md.xtc" ]; then
         echo "      Error: md.xtc not found in $(pwd)"
         return 1
     fi
-    
+
     # Step 1: Generate TPR if not exists
     if [ ! -f "solv_ions.tpr" ]; then
         echo "      Generating TPR file..."
         gmx grompp -f "$MDP_DIR_ABS/minimization.mdp" -c "$SOLV_IONS_GRO" -p "$TOPOL_CG_FILE" -o solv_ions.tpr -maxwarn 2 2>&1 | grep -v "GROMACS reminds you"
         check_error "grompp for TPR"
     fi
-    
+
     # Step 2: Remove PBC with -pbc whole
     echo "      Removing PBC (making molecules whole)..."
     echo "0" | gmx trjconv -s solv_ions.tpr -f md.xtc -o md_whole.xtc -pbc whole 2>&1 | grep -v "GROMACS reminds you" || true
-    
+
     if [ ! -f "md_whole.xtc" ]; then
         echo "      Warning: Failed to create md_whole.xtc, trying alternative method..."
         echo "0" | gmx trjconv -s solv_ions.tpr -f md.xtc -o md_whole.xtc -pbc mol 2>&1 | grep -v "GROMACS reminds you" || true
     fi
-    
+
     # Step 3: Remove jumps with -pbc nojump
     if [ -f "md_whole.xtc" ]; then
         echo "      Removing jumps from trajectory..."
@@ -420,7 +434,7 @@ analyze_trajectory() {
         echo "      Warning: md_whole.xtc not found, trying with original md.xtc"
         echo "0" | gmx trjconv -s solv_ions.tpr -f md.xtc -o md_nojump.xtc -pbc nojump 2>&1 | grep -v "GROMACS reminds you" || true
     fi
-    
+
     # Step 4: Center the molecule in the box
     if [ -f "md_nojump.xtc" ]; then
         echo "      Centering molecule in box..."
@@ -429,7 +443,7 @@ analyze_trajectory() {
         echo "      Warning: md_nojump.xtc not found, trying with md_whole.xtc"
         printf "0\n0\n" | gmx trjconv -s solv_ions.tpr -f md_whole.xtc -o md_center.xtc -center -pbc mol -ur compact 2>&1 | grep -v "GROMACS reminds you" || true
     fi
-    
+
     # Step 5: Fallback
     if [ ! -f "md_center.xtc" ]; then
         echo "      Warning: Centering failed, using trajectory with PBC removed only"
@@ -442,34 +456,39 @@ analyze_trajectory() {
             return 1
         fi
     fi
-    
-    # Run analysis using bayesian-potentials analyze command
-    echo "    Running bonds/angles/dihedrals analysis..."
-    
-    CMD="bayesian-potentials analyze \
-        --bonds_ndx \"$bonds_ndx\" \
-        --angles_ndx \"$angles_ndx\" \
-        --dihedrals_ndx \"$dihedrals_ndx\" \
-        --xtc_file \"md_center.xtc\" \
-        --tpr_file \"solv_ions.tpr\" \
-        --group_1 \"$group_out\" \
-        --group_2 \"$group_out\""
-    
-    if [ -f "$INDEX_NDX_ABS" ]; then
-        CMD="$CMD --index \"$INDEX_NDX_ABS\""
+
+    # Run analysis using generate_bonds_angles_dihedrals.py
+    if [ -f "$SCRIPTS_PATH_ABS/generate_bonds_angles_dihedrals.py" ]; then
+        echo "    Running bonds/angles/dihedrals analysis..."
+
+        CMD="python3 \"$SCRIPTS_PATH_ABS/generate_bonds_angles_dihedrals.py\" \
+            --bonds_ndx \"$bonds_ndx\" \
+            --angles_ndx \"$angles_ndx\" \
+            --dihedrals_ndx \"$dihedrals_ndx\" \
+            --xtc_file \"md_center.xtc\" \
+            --tpr_file \"solv_ions.tpr\" \
+            --group_1 \"$group_out\" \
+            --group_2 \"$group_out\""
+
+        if [ -f "$INDEX_NDX_ABS" ]; then
+            CMD="$CMD --index \"$INDEX_NDX_ABS\""
+        fi
+
+        eval $CMD
+        check_error "generate_bonds_angles_dihedrals.py"
+
+        mkdir -p bonds angles dihedrals
+        mv bond_*.xvg bonds/ 2>/dev/null || true
+        mv ang_*.xvg angles/ 2>/dev/null || true
+        mv dih_*.xvg dihedrals/ 2>/dev/null || true
+        mv distr_*.xvg bonds/ 2>/dev/null || true
+
+        echo "      ✓ Analysis completed"
+    else
+        echo "      Error: generate_bonds_angles_dihedrals.py not found at $SCRIPTS_PATH_ABS"
+        return 1
     fi
-    
-    eval $CMD
-    check_error "bayesian-potentials analyze"
-    
-    mkdir -p bonds angles dihedrals
-    mv bond_*.xvg bonds/ 2>/dev/null || true
-    mv ang_*.xvg angles/ 2>/dev/null || true
-    mv dih_*.xvg dihedrals/ 2>/dev/null || true
-    mv distr_*.xvg bonds/ 2>/dev/null || true
-    
-    echo "      ✓ Analysis completed"
-    
+
     return 0
 }
 
@@ -485,15 +504,15 @@ mkdir -p "$INITIAL_ITER_DIR"
 if [ -d "$CG_MD_DIR_ABS" ]; then
     echo "  Copying files from $CG_MD_DIR_ABS to $INITIAL_ITER_DIR"
     cp -r "$CG_MD_DIR_ABS"/* "$INITIAL_ITER_DIR/" 2>/dev/null || true
-    
+
     if [ -d "$CG_MD_DIR_ABS/$FF_FILES_DIR" ]; then
         cp -r "$CG_MD_DIR_ABS/$FF_FILES_DIR" "$INITIAL_ITER_DIR/" 2>/dev/null || true
     fi
-    
+
     if [ -n "$MDP_DIR_ABS" ] && [ -d "$MDP_DIR_ABS" ]; then
         cp "$MDP_DIR_ABS"/*.mdp "$INITIAL_ITER_DIR/" 2>/dev/null || true
     fi
-    
+
     echo "  ✓ Initial iteration setup complete"
 else
     echo "  Error: CG_MD_DIR not found: $CG_MD_DIR_ABS"
@@ -540,7 +559,7 @@ for ((i=0; i<$ITERATIONS; i++)); do
             exit 1
         fi
     fi
-    
+
     # -------------------------------
     # Analyze trajectory to generate XVG files
     # -------------------------------
@@ -549,36 +568,42 @@ for ((i=0; i<$ITERATIONS; i++)); do
     else
         echo "  Using existing XVG files"
     fi
-    
+
     # -------------------------------
     # Generate TSV statistics from CG XVG files
     # -------------------------------
     echo "  Generating TSV statistics from CG simulation..."
-    
-    bayesian-potentials distributions \
-        --bonds_dir "bonds" \
-        --angles_dir "angles" \
-        --dihedrals_dir "dihedrals" \
-        --dir_to_output "stat" \
-        --bond_out "bond_${i}.tsv" \
-        --angle_out "angle_${i}.tsv" \
-        --dihedral_out "dihedral_${i}.tsv"
-    check_error "bayesian-potentials distributions"
-    
-    mv bond_${i}.tsv stat/ 2>/dev/null || true
-    mv angle_${i}.tsv stat/ 2>/dev/null || true
-    mv dihedral_${i}.tsv stat/ 2>/dev/null || true
-    
-    echo "  ✓ CG statistics saved to stat/"
-    
+
+    if [ -f "$SCRIPTS_PATH_ABS/bp_distributions.py" ]; then
+        python3 "$SCRIPTS_PATH_ABS/bp_distributions.py" \
+            --bonds_dir "bonds" \
+            --angles_dir "angles" \
+            --dihedrals_dir "dihedrals" \
+            --dir_to_output "stat" \
+            --bond_out "bond_${i}.tsv" \
+            --angle_out "angle_${i}.tsv" \
+            --dihedral_out "dihedral_${i}.tsv"
+        check_error "bp_distributions.py"
+
+        mv bond_${i}.tsv stat/ 2>/dev/null || true
+        mv angle_${i}.tsv stat/ 2>/dev/null || true
+        mv dihedral_${i}.tsv stat/ 2>/dev/null || true
+
+        echo "  ✓ CG statistics saved to stat/"
+    else
+        echo "  Error: bp_distributions.py not found at $SCRIPTS_PATH_ABS"
+        exit 1
+    fi
+
     # -------------------------------
     # Plot distributions (AA reference vs CG simulated)
     # -------------------------------
-    if [ -f "$PACKAGE_DIR/scripts/plot_distributions.py" ]; then
+    if [ -f "$SCRIPTS_PATH_ABS/plot_distributions.py" ]; then
         echo "  Plotting distributions (AA reference vs CG simulated)..."
         mkdir -p figures
-        
-        python3 "$PACKAGE_DIR/scripts/plot_distributions.py" \
+
+        # IMPORTANT: Use AA XVG directories as reference and CG bonds/angles/dihedrals as simulated
+        python3 "$SCRIPTS_PATH_ABS/plot_distributions.py" \
             --bonds_ref_dir "$AA_XVG_BONDS_ABS" \
             --angles_ref_dir "$AA_XVG_ANGLES_ABS" \
             --dihedrals_ref_dir "$AA_XVG_DIHEDRALS_ABS" \
@@ -586,7 +611,7 @@ for ((i=0; i<$ITERATIONS; i++)); do
             --angles_sim_dir "angles" \
             --dihedrals_sim_dir "dihedrals" \
             --figures_dir "figures"
-        
+
         echo "  ✓ Distribution plots saved to figures/"
     else
         echo "  Warning: plot_distributions.py not found, skipping plots"
@@ -597,80 +622,69 @@ for ((i=0; i<$ITERATIONS; i++)); do
     # -------------------------------
     if [ $i -lt $((ITERATIONS-1)) ]; then
         echo "  Updating force constants..."
-    
+
         mkdir -p "$NEXT_DIR"
-    
+
         echo "  Copying base files to $NEXT_DIR..."
-        
+
         # Copy all files except stat, figures, bonds, angles, dihedrals, and the ITP
         rsync -av --exclude="stat" --exclude="figures" --exclude="bonds" --exclude="angles" --exclude="dihedrals" --exclude="$ITP_TO_OPTIMIZE" \
             "$CURRENT_DIR/" "$NEXT_DIR/" 2>/dev/null || \
         find "$CURRENT_DIR" -maxdepth 1 -type f ! -name "$ITP_TO_OPTIMIZE" -exec cp {} "$NEXT_DIR/" \; 2>/dev/null || true
-    
+
         for dir in ff_files ions_mdp; do
             if [ -d "$CURRENT_DIR/$dir" ]; then
                 cp -r "$CURRENT_DIR/$dir" "$NEXT_DIR/" 2>/dev/null || true
             fi
         done
-    
-        echo "  Running force adjustment..."
-        
-        # Build force-adjust command with boolean flags
-        FORCE_ADJUST_CMD="bayesian-potentials force-adjust \
-            --bonds_ref \"$BONDS_REF_ABS\" \
-            --angles_ref \"$ANGLES_REF_ABS\" \
-            --dihedrals_ref \"$DIHEDRALS_REF_ABS\" \
-            --bonds_sim \"stat/bond_${i}.tsv\" \
-            --angles_sim \"stat/angle_${i}.tsv\" \
-            --dihedrals_sim \"stat/dihedral_${i}.tsv\" \
-            --itp_cg \"$CURRENT_DIR/$ITP_TO_OPTIMIZE\" \
-            --ndx_bounds \"$NDX_BONDS_ABS\" \
-            --ndx_angles \"$NDX_ANGLES_ABS\" \
-            --ndx_dihedrals \"$NDX_DIHEDRALS_ABS\" \
-            --molecule_name \"molecule\" \
-            --T0 $T0 \
-            --alpha $ALPHA \
-            --itp_out \"$NEXT_DIR/$ITP_TO_OPTIMIZE\""
-        
-        # Add multimodal flags based on boolean values
-        if [ "$MULTIMODAL_MODE" = "true" ]; then
-            FORCE_ADJUST_CMD="$FORCE_ADJUST_CMD --multimodal_mode"
-        else
-            FORCE_ADJUST_CMD="$FORCE_ADJUST_CMD --no_multimodal_mode"
-        fi
-        
-        if [ "$VARIANCE_MULTIMODAL" = "true" ]; then
-            FORCE_ADJUST_CMD="$FORCE_ADJUST_CMD --variance_multimodal"
-        else
-            FORCE_ADJUST_CMD="$FORCE_ADJUST_CMD --no_variance_multimodal"
-        fi
-        
-        # Execute the command
-        eval $FORCE_ADJUST_CMD
-        
-        if [ $? -eq 0 ]; then
-            echo "  ✓ Updated ITP saved to: $NEXT_DIR/$ITP_TO_OPTIMIZE"
-            
-            if [ -f "$CURRENT_DIR/$ITP_TO_OPTIMIZE" ] && [ -f "$NEXT_DIR/$ITP_TO_OPTIMIZE" ]; then
-                if diff -q "$CURRENT_DIR/$ITP_TO_OPTIMIZE" "$NEXT_DIR/$ITP_TO_OPTIMIZE" > /dev/null 2>&1; then
-                    echo "  ⚠ WARNING: New ITP is identical to old ITP!"
-                else
-                    echo "  ✓ New ITP is different from old ITP"
+
+        if [ -f "$SCRIPTS_PATH_ABS/force_adjustment.py" ]; then
+            echo "  Running force_adjustment.py..."
+            python3 "$SCRIPTS_PATH_ABS/force_adjustment.py" \
+                --bonds_ref "$BONDS_REF_ABS" \
+                --angles_ref "$ANGLES_REF_ABS" \
+                --dihedrals_ref "$DIHEDRALS_REF_ABS" \
+                --bonds_sim "stat/bond_${i}.tsv" \
+                --angles_sim "stat/angle_${i}.tsv" \
+                --dihedrals_sim "stat/dihedral_${i}.tsv" \
+                --itp_cg "$CURRENT_DIR/$ITP_TO_OPTIMIZE" \
+                --ndx_bounds "$NDX_BONDS_ABS" \
+                --ndx_angles "$NDX_ANGLES_ABS" \
+                --ndx_dihedrals "$NDX_DIHEDRALS_ABS" \
+                --molecule_name "molecule" \
+                --multimodal_mode "$MULTIMODAL_MODE" \
+                --variance_multimodal "$VARIANCE_MULTIMODAL" \
+                --T0 "$T0" \
+                --alpha "$ALPHA" \
+                --itp_out "$NEXT_DIR/$ITP_TO_OPTIMIZE"
+
+            if [ $? -eq 0 ]; then
+                echo "  ✓ Updated ITP saved to: $NEXT_DIR/$ITP_TO_OPTIMIZE"
+
+                if [ -f "$CURRENT_DIR/$ITP_TO_OPTIMIZE" ] && [ -f "$NEXT_DIR/$ITP_TO_OPTIMIZE" ]; then
+                    if diff -q "$CURRENT_DIR/$ITP_TO_OPTIMIZE" "$NEXT_DIR/$ITP_TO_OPTIMIZE" > /dev/null 2>&1; then
+                        echo "  ⚠ WARNING: New ITP is identical to old ITP!"
+                    else
+                        echo "  ✓ New ITP is different from old ITP"
+                    fi
                 fi
+            else
+                echo "  Error: force_adjustment.py failed"
+                exit 1
             fi
         else
-            echo "  Error: bayesian-potentials force-adjust failed"
+            echo "  Error: force_adjustment.py not found at $SCRIPTS_PATH_ABS"
             exit 1
         fi
     fi
-    
+
     # Clean up temporary files if not keeping
     if [ "$KEEP_TEMP" != "true" ]; then
         echo "  Cleaning up temporary files..."
         rm -f *.xtc *.trr nvt* npt* md* *.cpt *.edr *.log \#* 2>/dev/null || true
         rm -rf \#* 2>/dev/null || true
     fi
-    
+
     echo "  ✓ Iteration $i completed"
 
 done
@@ -690,7 +704,7 @@ FINAL_ITER_DIR="$WORKDIR_ABS/iter_$((ITERATIONS-1))"
 if [ -d "$FINAL_ITER_DIR" ]; then
     echo "  Copying final results from $FINAL_ITER_DIR to $FINAL_DIR"
     cp -r "$FINAL_ITER_DIR"/* "$FINAL_DIR/" 2>/dev/null || true
-    
+
     if [ -f "$FINAL_ITER_DIR/$ITP_TO_OPTIMIZE" ]; then
         cp "$FINAL_ITER_DIR/$ITP_TO_OPTIMIZE" "$FINAL_DIR/${ITP_TO_OPTIMIZE%.itp}_optimized.itp"
         echo "  ✓ Optimized ITP saved to: $FINAL_DIR/${ITP_TO_OPTIMIZE%.itp}_optimized.itp"

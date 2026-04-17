@@ -69,6 +69,30 @@ def get_default_ff_dir():
             return str(ff_dir)
     return None
 
+def find_script(script_name):
+    """Find a script in multiple possible locations."""
+    # List of possible locations
+    possible_locations = [
+        Path.cwd() / "bin" / script_name,
+        Path.cwd() / script_name,
+        get_bin_dir() / script_name,
+        Path(__file__).parent.parent / "bin" / script_name,
+        Path(__file__).parent.parent / script_name,
+        Path.home() / ".local" / "bin" / script_name,
+    ]
+    
+    # Also check if script is in PATH
+    import shutil
+    which_script = shutil.which(script_name)
+    if which_script:
+        possible_locations.append(Path(which_script))
+    
+    for location in possible_locations:
+        if location.exists() and os.access(location, os.X_OK):
+            return location
+    
+    return None
+
 def run_mapping_script(args):
     """Run the mapping script with proper module imports."""
     from bayesian_potentials.scripts.map_aa_to_cg import main as map_main
@@ -298,11 +322,17 @@ def run_force_adjustment_script(args):
 
 def run_shell_script_AA(args):
     """Run the main shell pipeline script for AA to CG."""
-    script_path = get_bin_dir() / "autoparam_AA.sh"
+    script_path = find_script("autoparam_AA.sh")
     
-    if not script_path.exists():
-        print(f"Error: Shell script not found at {script_path}")
+    if not script_path:
+        print(f"Error: autoparam_AA.sh not found")
+        print("Please ensure the script is in one of these locations:")
+        print("  - ./bin/autoparam_AA.sh")
+        print("  - ./autoparam_AA.sh")
+        print(f"  - {get_bin_dir()}/autoparam_AA.sh")
         sys.exit(1)
+    
+    print(f"Using script: {script_path}")
     
     # Make sure script is executable
     os.chmod(script_path, 0o755)
@@ -346,11 +376,30 @@ def run_shell_script_AA(args):
 
 def run_shell_script_CG(args):
     """Run the CG parameter optimization pipeline script."""
-    script_path = get_bin_dir() / "autoparam_CG.sh"
+    # First, try to find autoparam_CG.sh in various locations
+    script_path = find_script("autoparam_CG.sh")
     
-    if not script_path.exists():
-        print(f"Error: Shell script not found at {script_path}")
+    # If not found, check if user provided scripts_path
+    if not script_path and hasattr(args, 'scripts_path') and args.scripts_path:
+        # Check if scripts_path is a directory containing the script
+        scripts_path = Path(args.scripts_path)
+        if scripts_path.is_dir():
+            potential_script = scripts_path / "autoparam_CG.sh"
+            if potential_script.exists():
+                script_path = potential_script
+        elif scripts_path.is_file() and scripts_path.name == "autoparam_CG.sh":
+            script_path = scripts_path
+    
+    if not script_path:
+        print(f"Error: autoparam_CG.sh not found")
+        print("Please ensure the script is in one of these locations:")
+        print("  - ./bin/autoparam_CG.sh")
+        print("  - ./autoparam_CG.sh")
+        print(f"  - {get_bin_dir()}/autoparam_CG.sh")
+        print("  - Or provide --scripts_path pointing to the directory containing autoparam_CG.sh")
         sys.exit(1)
+    
+    print(f"Using script: {script_path}")
     
     # Make sure script is executable
     os.chmod(script_path, 0o755)
@@ -362,32 +411,57 @@ def run_shell_script_CG(args):
         if key == "command" or value is None:
             continue
         
+        # Skip internal flags
+        if key in ["verbose"]:
+            continue
+        
+        # Skip scripts_path as it's handled separately
+        if key == "scripts_path":
+            continue
+        
         # Skip None values and empty lists
         if isinstance(value, list) and len(value) == 0:
             continue
         
         # IMPORTANT: Keep underscores for shell script (don't convert to hyphens)
         # The shell script expects underscores, not hyphens
-        cmd_key = "--" + key  # Keep original underscores
+        cmd_key = "--" + key.replace("_", "_")  # Keep underscores
         
         # Handle boolean flags
         if isinstance(value, bool):
             if value:
                 # For boolean True, add the flag
                 cmd_args.append(cmd_key)
+            # If False, don't add anything (the script handles defaults)
         else:
             # For non-boolean, add flag and value
             cmd_args.append(cmd_key)
             cmd_args.append(str(value))
     
+    # Add scripts_path if provided
+    if hasattr(args, 'scripts_path') and args.scripts_path:
+        cmd_args.append("--scripts_path")
+        cmd_args.append(str(args.scripts_path))
+    
     # Debug: print the command if verbose
     if getattr(args, 'verbose', False):
-        print(f"Running: {' '.join(cmd_args)}")
+        print(f"\nRunning command:")
+        print(' '.join(cmd_args))
+        print()
     
     # Run the script
     try:
-        result = subprocess.run(cmd_args)
+        # Use shell=False for security, but pass arguments properly
+        result = subprocess.run(cmd_args, env=os.environ.copy())
         sys.exit(result.returncode)
+    except FileNotFoundError as e:
+        print(f"Error: Failed to execute {script_path}")
+        print(f"Details: {e}")
+        print("\nTroubleshooting:")
+        print("1. Check if the script has execute permissions: chmod +x autoparam_CG.sh")
+        print("2. Check if the script has a valid shebang (#!/bin/bash)")
+        print("3. Check if all dependencies (gmx, python3) are in PATH")
+        sys.exit(1)
     except KeyboardInterrupt:
         print("\nInterrupted by user")
         sys.exit(1)
@@ -490,7 +564,7 @@ def main():
     adapt_parser.add_argument("--verbose", action="store_true",
                              help="Verbose output showing name changes")
     
-    # Force adjustment command - MODIFIED with proper boolean flags
+    # Force adjustment command
     force_parser = subparsers.add_parser("force-adjust", help="Adjust force constants using Bayesian update and simulated annealing")
     force_parser.add_argument("--bonds_ref", required=True,
                              help="Reference bonds TSV file")
@@ -678,7 +752,7 @@ def main():
     optional_group_cg.add_argument("--group_out", default="System",
                                    help="Group for output in analysis (default: System)")
     
-    # Multimodal options - MODIFIED with proper boolean flags
+    # Multimodal options
     multimodal_group_cg = pipeline_cg_parser.add_argument_group("Multimodal options")
     multimodal_group_cg.add_argument("--multimodal_mode", action="store_true", default=True,
                                      help="Use peak density mode (default: True)")
