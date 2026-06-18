@@ -1,0 +1,15 @@
+include README.md
+include LICENSE
+include requirements.txt
+
+
+recursive-include auto_mart3/data *
+
+# Scripts
+recursive-include auto_mart3/bin *.sh
+
+
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude *.swp
+global-exclude *.bak
