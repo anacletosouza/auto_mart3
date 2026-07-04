@@ -872,6 +872,7 @@ def main():
                     if bond_key not in force_bond_dict:
                         missing_bonds.append(f"({i}, {j})")
                     
+                    # MODIFICATION: Use reference mean for bond length
                     ref_mean = bonds_ref_mean[idx] if idx < len(bonds_ref_mean) and not np.isnan(bonds_ref_mean[idx]) else 0.0
                     ref_std = bonds_ref_std[idx] if idx < len(bonds_ref_std) and not np.isnan(bonds_ref_std[idx]) else 0.0
                     sim_std = bonds_sim_std[idx] if idx < len(bonds_sim_std) and not np.isnan(bonds_sim_std[idx]) else 0.0
@@ -885,6 +886,7 @@ def main():
                     elif "FORCED TO MAX" in status:
                         forced_bonds.append(f"({i}, {j}) -> {F_new:.1f}")
                     
+                    # Use ref_mean for the bond length (from AA simulation reference)
                     f.write(format_bond(i, j, ref_mean, F_new) +
                             f" ; σ_ref={ref_std:.4f} σ_sim={sim_std:.4f} "
                             f"σ_prev={prev_std if prev_std is not None else 'NA'} "
@@ -908,6 +910,7 @@ def main():
                     if angle_key not in force_angle_dict:
                         missing_angles.append(f"({i}, {j}, {k})")
                     
+                    # MODIFICATION: Use reference mean for angle value
                     ref_mean = angles_ref_mean[idx] if idx < len(angles_ref_mean) and not np.isnan(angles_ref_mean[idx]) else 0.0
                     ref_std = angles_ref_std[idx] if idx < len(angles_ref_std) and not np.isnan(angles_ref_std[idx]) else 0.0
                     sim_std = angles_sim_std[idx] if idx < len(angles_sim_std) and not np.isnan(angles_sim_std[idx]) else 0.0
@@ -921,6 +924,7 @@ def main():
                     elif "FORCED TO MAX" in status:
                         forced_angles.append(f"({i}, {j}, {k}) -> {F_new:.1f}")
                     
+                    # Use ref_mean for the angle value (from AA simulation reference)
                     f.write(format_angle(i, j, k, ref_mean, F_new) +
                             f" ; σ_ref={ref_std:.4f} σ_sim={sim_std:.4f} "
                             f"σ_prev={prev_std if prev_std is not None else 'NA'} "
@@ -944,6 +948,7 @@ def main():
                     if dihedral_key not in force_dihedral_dict:
                         missing_dihedrals.append(f"({i}, {j}, {k}, {l})")
                     
+                    # MODIFICATION: Use reference mean for dihedral angle
                     ref_mean = dihedrals_ref_mean[idx] if idx < len(dihedrals_ref_mean) and not np.isnan(dihedrals_ref_mean[idx]) else 0.0
                     ref_std = dihedrals_ref_std[idx] if idx < len(dihedrals_ref_std) and not np.isnan(dihedrals_ref_std[idx]) else 0.0
                     sim_std = dihedrals_sim_std[idx] if idx < len(dihedrals_sim_std) and not np.isnan(dihedrals_sim_std[idx]) else 0.0
@@ -957,6 +962,7 @@ def main():
                     elif "FORCED TO MAX" in status:
                         forced_dihedrals.append(f"({i}, {j}, {k}, {l}) -> {F_new:.1f}")
                     
+                    # Use ref_mean for the dihedral angle (from AA simulation reference)
                     f.write(format_dihedral(i, j, k, l, ref_mean, F_new) +
                             f" ; σ_ref={ref_std:.4f} "
                             f"σ_sim={sim_std:.4f} "

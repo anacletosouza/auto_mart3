@@ -1,3 +1,27 @@
+Metadata-Version: 2.4
+Name: auto_mart3
+Version: 1.0.0
+Summary: Automated CG Mapping and Parameterization Pipeline for Martini 3
+Home-page: https://github.com/anacletosouza/auto_mart3.git
+Author: Anacleto Silva de Souza
+Author-email: anacletosilvadesouza@usp.br
+License: MIT
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: numpy>=1.19.0
+Requires-Dist: mdtraj>=1.9.0
+Dynamic: author
+Dynamic: author-email
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: license
+Dynamic: license-file
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
 # Auto_Mart3 - Coarse-Grained Mapping Pipeline
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
