@@ -7,7 +7,7 @@ if os.path.exists(readme_path):
     with open(readme_path, "r", encoding="utf-8") as f:
         long_description = f.read()
 else:
-    long_description = "Auto_Mart3: Automated CG Mapping and Parameterization"
+    long_description = "Auto_Mart3: Automated CG Mapping and Parameterization based on machine learning"
 
 # Read requirements
 requirements_path = "requirements.txt"

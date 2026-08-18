@@ -1,4 +1,6 @@
-# Auto_Mart3 - Coarse-Grained Mapping Pipeline
+# Auto_Mart3: Automated CG Mapping and Parameterization based on machine learning
+
+## Observation: This program is in test phase.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
@@ -703,13 +705,13 @@ results_CG_opt/
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License - see LICENSE file for details. This tool was supported by São Paulo Research Foundation (FAPESP) 2023/18211-0 and 2025/05583-1.
 
 ## Citation
 
 If you use Auto_Mart3 in your research, please cite:
 
 ```
-Anacleto Silva de Souza, Siewert-Jan Marrink, Auto_Mart3: Automated Coarse-Grained Mapping and Parameterization Pipeline,
+Anacleto Silva de Souza, Cristiane Rodrigues Guzzo and Siewert-Jan Marrink. Auto_Mart3: Automated Coarse-Grained Mapping and Parameterization Pipeline,
 https://github.com/anacletosouza/auto_mart3, 2026.
 ```
