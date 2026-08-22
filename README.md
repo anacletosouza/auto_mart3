@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![GROMACS](https://img.shields.io/badge/GROMACS-2021+-green.svg)](https://www.gromacs.org/)
+[![GROMACS](https://img.shields.io/badge/GROMACS-2022+-green.svg)](https://www.gromacs.org/)
 
 A complete pipeline to map atomistic (AA) molecular dynamics trajectories to coarse-grained (CG) representations, generate CG topologies, prepare GROMACS input files, and perform Bayesian optimization of force constants for Martini 3 force field parameters.
 
