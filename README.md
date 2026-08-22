@@ -62,7 +62,7 @@ pip install numpy scipy matplotlib pandas
 
 **Dependencies:**
 - Python 3.8+
-- GROMACS (2021 or later)
+- GROMACS (2022 or later)
 - NumPy, SciPy, Matplotlib, Pandas
 
 ---
