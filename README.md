@@ -46,6 +46,8 @@ A complete pipeline to map atomistic (AA) molecular dynamics trajectories to coa
 
 ## Installation
 
+To use auto_mart3, you must first install cg_martini3 (available at https://github.com/anacletosouza/cg_martini3) and GROMACS (version 2022 or newer).
+
 ```bash
 # Clone the repository
 git clone https://github.com/anacletosouza/auto_mart3.git
