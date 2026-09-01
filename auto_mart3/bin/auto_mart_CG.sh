@@ -746,11 +746,11 @@ ref_t                    = $REF_T
 
 ; ============= PRESSURE COUPLING ADDED FOR NPT =============
 
-Pcoupl                   = Berendsen
-Pcoupltype               = semiisotropic
+Pcoupl                   = Parrinello-Rahman
+Pcoupltype               = isotropic
 tau_p                    = 12.0               
-compressibility          = 4.5e-5 4.5e-5      
-ref_p                    = $REF_P $REF_P
+compressibility          = 4.5e-5      
+ref_p                    = $REF_P
 ; ============================================================
 
 ; Velocity generation
@@ -814,10 +814,10 @@ ref_t                    = $REF_T
 ; ============= PRESSURE COUPLING ADDED FOR NPT =============
 
 Pcoupl                   = Parrinello-Rahman
-Pcoupltype               = semiisotropic
+Pcoupltype               = isotropic
 tau_p                    = 12.0               
-compressibility          = 4.5e-5 4.5e-5      
-ref_p                    = $REF_P $REF_P
+compressibility          = 4.5e-5      
+ref_p                    = $REF_P 
 ; ============================================================
 
 ; Velocity generation (CHANGED for continuation)
